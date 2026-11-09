@@ -181,6 +181,7 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
             "cover_color": "TEXT NOT NULL DEFAULT ''",
             "updated_at": "TEXT NOT NULL DEFAULT ''",
             "source_path": "TEXT NOT NULL DEFAULT ''",
+            "cet": "INTEGER NOT NULL DEFAULT 0",
         },
         "vocab": {
             "deck": "TEXT NOT NULL DEFAULT '默认'",
@@ -1015,6 +1016,10 @@ def _ingest_pdf_bytes(data: bytes, filename: str) -> dict[str, Any]:
             metadata["title"] = epub_meta["title"][:300]
         if epub_meta.get("author"):
             metadata["authors"] = epub_meta["author"][:300]
+    cet_flag = 1 if re.search(
+        r"(?i)(cet\s*[-_ ]?[46]|四级|六级|真题|试卷|答案|reading\s*comprehension)",
+        f"{filename} {metadata['title']}",
+    ) else 0
     with db() as conn:
         existing = conn.execute(
             "SELECT id FROM documents WHERE path=?", (str(target),)
@@ -1024,8 +1029,8 @@ def _ingest_pdf_bytes(data: bytes, filename: str) -> dict[str, Any]:
             return {"id": existing["id"], "title": metadata["title"], "existing": True}
         cursor = conn.execute(
             "INSERT INTO documents(title, authors, year, venue, doi, abstract, cover_color, "
-            "filename, path, pages, created_at, updated_at, kind, source_path) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "filename, path, pages, created_at, updated_at, kind, source_path, cet) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 metadata["title"],
                 metadata["authors"],
@@ -1041,6 +1046,7 @@ def _ingest_pdf_bytes(data: bytes, filename: str) -> dict[str, Any]:
                 now_iso(),
                 "epub" if is_epub else "paper",
                 str(source) if source else "",
+                cet_flag,
             ),
         )
         doc_id = int(cursor.lastrowid)
@@ -1063,11 +1069,16 @@ class EpubLayoutIn(BaseModel):
 
 
 @app.post("/api/documents")
-async def upload_document(file: UploadFile = File(...)) -> dict[str, Any]:
+async def upload_document(file: UploadFile = File(...), cet: bool = False) -> dict[str, Any]:
     filename = file.filename or "Untitled.pdf"
     if not filename.lower().endswith((".pdf", ".epub")):
         raise HTTPException(400, "目前支持 PDF 和 EPUB。")
-    return _ingest_pdf_bytes(await file.read(), filename)
+    result = _ingest_pdf_bytes(await file.read(), filename)
+    if cet:
+        with db() as conn:
+            conn.execute("UPDATE documents SET cet=1 WHERE id=?", (result["id"],))
+        result["cet"] = True
+    return result
 
 
 @app.post("/api/documents/{doc_id}/epub/relayout")
@@ -1122,6 +1133,7 @@ def list_documents(
     venue: str = "",
     year_from: Optional[int] = None,
     year_to: Optional[int] = None,
+    cet: Optional[int] = None,
 ) -> list[dict[str, Any]]:
     sql = (
         "SELECT d.*, c.name AS collection_name, c.color AS collection_color "
@@ -1152,6 +1164,9 @@ def list_documents(
     if year_to is not None:
         sql += " AND CAST(NULLIF(d.year, '') AS INTEGER) <= ?"
         params.append(year_to)
+    if cet is not None:
+        sql += " AND d.cet = ?"
+        params.append(1 if cet else 0)
     order = {
         "recent": "COALESCE(d.last_read_at, d.created_at) DESC, d.id DESC",
         "title": "d.title COLLATE NOCASE ASC",
@@ -1170,6 +1185,11 @@ def list_documents(
         )
         result.append(item)
     return result
+
+
+@app.get("/api/cet/documents")
+def list_cet_documents() -> list[dict[str, Any]]:
+    return list_documents(cet=1)
 
 
 @app.get("/api/documents/{doc_id}")
@@ -1641,6 +1661,7 @@ class DocumentPatch(BaseModel):
     favorite: Optional[int] = None
     status: Optional[str] = None
     rating: Optional[int] = None
+    cet: Optional[int] = None
 
 
 @app.patch("/api/documents/{doc_id}")
@@ -4123,6 +4144,7 @@ def _build_sync_snapshot() -> dict[str, Any]:
             "updated_at": row["updated_at"],
             "pdf_name": Path(row["path"]).name,
             "kind": row["kind"] or "paper",
+            "cet": row["cet"] or 0,
             "epub_name": Path(row["source_path"]).name if row["source_path"] else "",
         }
         document_items.append(item)
@@ -4327,7 +4349,7 @@ async def _merge_sync_snapshot(snapshot: dict[str, Any], client: httpx.AsyncClie
             local = local_docs[key]
             remote_updated = doc.get("updated_at") or ""
             local_updated = local["updated_at"] or ""
-            fields = ("title", "authors", "year", "venue", "doi", "abstract", "tags")
+            fields = ("title", "authors", "year", "venue", "doi", "abstract", "tags", "cet")
             changed = any((local[field] or "") != (doc.get(field) or "") for field in fields)
             if changed and remote_updated > local_updated:
                 with db() as conn:
@@ -4388,7 +4410,7 @@ async def _merge_sync_snapshot(snapshot: dict[str, Any], client: httpx.AsyncClie
             conn.execute(
                 "UPDATE documents SET title=?, authors=?, year=?, venue=?, doi=?, abstract=?, "
                 "tags=?, collection_id=?, favorite=?, status=?, last_page=?, reading_seconds=?, "
-                "summary_json=?, updated_at=? WHERE id=?",
+                "summary_json=?, cet=?, updated_at=? WHERE id=?",
                 (
                     doc.get("title") or "Untitled", doc.get("authors") or "",
                     doc.get("year") or "", doc.get("venue") or "", doc.get("doi") or "",
@@ -4396,7 +4418,8 @@ async def _merge_sync_snapshot(snapshot: dict[str, Any], client: httpx.AsyncClie
                     collection_ids.get(doc.get("collection") or ""),
                     doc.get("favorite") or 0, doc.get("status") or "unread",
                     doc.get("last_page") or 1, doc.get("reading_seconds") or 0,
-                    doc.get("summary_json"), doc.get("updated_at") or now_iso(), doc_id,
+                    doc.get("summary_json"), doc.get("cet") or 0,
+                    doc.get("updated_at") or now_iso(), doc_id,
                 ),
             )
         doc_map[key] = doc_id

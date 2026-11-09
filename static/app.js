@@ -42,6 +42,7 @@ const ICONS = {
   scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/>',
   compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5Z"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
+  sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
   focus: '<path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/>',
 };
 
@@ -202,9 +203,10 @@ const S = {
   fullTranslation: null,
   cet: { analysis: null, text: "", article: null, quiz: null, answers: {}, submitted: false },
   library: {
-    q: "", sort: "recent", collection: null, favorite: false, status: "",
+    q: "", sort: "recent", collection: null, favorite: false, status: "", cet: false,
     author: "", venue: "", yearFrom: "", yearTo: "",
   },
+  uploadCet: false,
   settings: null,
   storage: null,
   storageRequired: false,
@@ -500,7 +502,7 @@ function docCard(doc) {
     <article class="doc-card" data-action="open-doc" data-id="${doc.id}">
       <div class="doc-cover" style="background:${escapeAttr(color)}">
         <img src="/api/documents/${doc.id}/cover?v=${encodeURIComponent(doc.updated_at || "")}" alt="" loading="lazy">
-        <span class="doc-badge">${doc.kind === "epub" ? "EPUB" : `${doc.pages} 页`}</span>
+        <span class="doc-badge">${doc.cet ? "四六级" : (doc.kind === "epub" ? "EPUB" : `${doc.pages} 页`)}</span>
         <button class="doc-fav ${doc.favorite ? "on" : ""}" data-action="fav-doc" data-id="${doc.id}" title="收藏">${icon("star")}</button>
       </div>
       <div class="doc-body">
@@ -529,7 +531,8 @@ async function renderLibrary() {
       <div class="library-toolbar">
         <div class="search-box">${icon("search")}<input id="libSearch" placeholder="搜索标题、作者、标签…" value="${escapeAttr(S.library.q)}"></div>
         <div class="filter-row" id="libFilters">
-          <button class="chip ${!S.library.favorite && !S.library.status ? "active" : ""}" data-action="lib-filter" data-filter="all">全部</button>
+          <button class="chip ${!S.library.favorite && !S.library.status && !S.library.cet ? "active" : ""}" data-action="lib-filter" data-filter="all">全部</button>
+          <button class="chip ${S.library.cet ? "active" : ""}" data-action="lib-filter" data-filter="cet">四六级</button>
           <button class="chip ${S.library.favorite ? "active" : ""}" data-action="lib-filter" data-filter="favorite">收藏</button>
           <button class="chip ${S.library.status === "unread" ? "active" : ""}" data-action="lib-filter" data-filter="unread">未读</button>
           <button class="chip ${S.library.status === "reading" ? "active" : ""}" data-action="lib-filter" data-filter="reading">在读</button>
@@ -576,6 +579,7 @@ async function refreshLibrary() {
   if (S.library.collection) params.set("collection_id", S.library.collection);
   if (S.library.favorite) params.set("favorite", "1");
   if (S.library.status) params.set("status", S.library.status);
+  if (S.library.cet) params.set("cet", "1");
   if (S.library.author) params.set("author", S.library.author);
   if (S.library.venue) params.set("venue", S.library.venue);
   if (S.library.yearFrom) params.set("year_from", S.library.yearFrom);
@@ -1030,13 +1034,15 @@ async function copyPaperCitation(index) {
 async function uploadFiles(files) {
   const list = Array.from(files || []).filter((file) => /\.(pdf|epub)$/i.test(file.name));
   if (!list.length) { toast("只支持 PDF / EPUB 文件", "error"); return; }
+  const asCet = Boolean(S.uploadCet);
+  S.uploadCet = false;
   let lastId = null;
   for (const file of list) {
     const form = new FormData();
     form.append("file", file);
     toast(`正在解析 ${file.name}…`);
     try {
-      const result = await api("/api/documents", { method: "POST", body: form });
+      const result = await api(`/api/documents${asCet ? "?cet=1" : ""}`, { method: "POST", body: form });
       lastId = result.id;
     } catch (error) {
       toast(`${file.name}：${error.message}`, "error");
@@ -1044,7 +1050,7 @@ async function uploadFiles(files) {
   }
   await Promise.all([loadCollections(), loadVocabCache()]);
   if (lastId) {
-    toast("导入完成");
+    toast(asCet ? "已导入四六级资料" : "导入完成");
     await openDoc(lastId);
   } else if (S.view === "library") {
     await refreshLibrary();
@@ -2277,6 +2283,7 @@ function openDocMenu() {
     <div class="dict-actions" style="margin-top:8px">
       <button class="primary" data-action="edit-doc">${icon("pen")}编辑信息</button>
       ${isEpub ? `<button class="ghost" data-action="epub-layout">${icon("book")}EPUB 排版</button>` : ""}
+      <button class="ghost" data-action="toggle-cet">${S.doc.cet ? "取消四六级" : "标记为四六级"}</button>
       <button class="ghost" data-action="enrich-doc">${icon("refresh")}补全元数据</button>
       <button class="ghost" data-action="research-tools">${icon("compass")}研究工具</button>
       <button class="ghost" data-action="doc-export-menu">${icon("download")}导出 / 引用</button>
@@ -2327,6 +2334,27 @@ async function runResearch(mode, label) {
   }
 }
 
+async function toggleCet(id) {
+  const doc = S.doc && S.doc.id === id
+    ? S.doc
+    : (S.docs || []).find((item) => item.id === id);
+  if (!doc) return;
+  try {
+    const updated = await api(`/api/documents/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cet: doc.cet ? 0 : 1 }),
+    });
+    if (S.doc && S.doc.id === id) S.doc.cet = updated.cet;
+    const local = (S.docs || []).find((item) => item.id === id);
+    if (local) local.cet = updated.cet;
+    closeModal();
+    if (S.view === "library") await refreshLibrary();
+    if (S.view === "cet") await renderCET();
+    toast(updated.cet ? "已标记为四六级资料" : "已取消四六级标记");
+  } catch (error) { toast(error.message, "error"); }
+}
+
 function openEpubLayoutModal() {
   if (!S.doc) return;
   const current = String(S.settings?.epub_font_size || "15");
@@ -2339,8 +2367,7 @@ function openEpubLayoutModal() {
     <div class="modal-actions"><button class="ghost" data-close-modal>取消</button><button class="primary" data-action="apply-epub-layout">${icon("refresh")}重新排版</button></div>`);
 }
 
-async function applyEpubLayout() {
-  if (!S.doc) return;
+async function applyEpubLayout() {  if (!S.doc) return;
   const font_size = Number($("#epubLayoutSize")?.value || 15);
   try {
     const updated = await api(`/api/documents/${S.doc.id}/epub/relayout`, {
@@ -2394,6 +2421,7 @@ function openLibraryMoreMenu() {
     <p class="modal-note">不常用的导入和整理工具收在这里，主界面只保留最常用的「导入 PDF」。</p>
     <div class="dict-actions" style="margin-top:0">
       <button class="ghost" data-action="upload-folder">${icon("upload")}导入文件夹</button>
+      <button class="ghost" data-action="cet-upload">${icon("pen")}导入四六级 PDF</button>
       <button class="ghost" data-action="web-import-modal">${icon("compass")}从网页导入</button>
       <button class="ghost" data-action="zotero-modal">${icon("book")}从 Zotero 导入</button>
       <button class="ghost" data-action="compare-modal">${icon("summary")}多篇对比</button>
@@ -2949,7 +2977,10 @@ async function renderCET() {
   const view = $("#cetView");
   view.innerHTML = `<div class="cet-page"><div class="cet-side">${loadingHtml("加载文章…")}</div><div class="cet-main"></div></div>`;
   try {
-    const articles = await api("/api/articles");
+    const [articles, cetDocs] = await Promise.all([
+      api("/api/articles"),
+      api("/api/cet/documents").catch(() => []),
+    ]);
     view.innerHTML = `
       <div class="cet-page">
         <aside class="cet-side">
@@ -2958,6 +2989,9 @@ async function renderCET() {
           <input id="cetTitle" placeholder="标题（可选）">
           <textarea id="cetText" placeholder="Paste an English article here…">${escapeHtml(S.cet.text || "")}</textarea>
           <div class="row"><button class="primary" data-action="cet-analyze">${icon("play")}开始精读</button><button class="ghost" data-action="cet-save">保存文章</button></div>
+          <div class="cet-saved-title">四六级资料 · ${cetDocs.length}</div>
+          <button class="soft" style="width:100%;margin-bottom:8px" data-action="cet-upload">${icon("upload")}导入四六级 PDF</button>
+          ${cetDocs.map((doc) => `<div class="cet-doc-item" data-action="open-doc" data-id="${doc.id}"><b>${escapeHtml(doc.title)}</b><span>${doc.pages} 页 · ${Math.round((doc.progress || 0) * 100)}%</span></div>`).join("") || '<div class="cet-doc-item empty">把试卷或阅读 PDF 导进来；或在图书馆打开文献 → 更多 → 标记为四六级。</div>'}
           <div class="cet-saved-title">已保存文章 · ${articles.length}</div>
           ${articles.map((article) => `<div class="cet-saved-item" data-action="open-article" data-id="${article.id}"><b>${escapeHtml(article.title)}</b><span>${article.chars} 字符 · ${fmtDate(article.created_at)}</span><button class="cet-del" data-action="delete-article" data-id="${article.id}" title="删除">×</button></div>`).join("") || '<div class="panel-empty" style="padding:14px 0">还没有保存的文章。</div>'}
           <div class="cet-saved-title">训练</div>
@@ -3439,7 +3473,8 @@ function showOnboarding() {
 async function handleAction(action, element, event) {
   if (event) event.preventDefault();
   switch (action) {
-    case "upload": closeModal(); $("#fileInput").click(); break;
+    case "upload": S.uploadCet = false; closeModal(); $("#fileInput").click(); break;
+    case "cet-upload": S.uploadCet = true; closeModal(); $("#fileInput").click(); break;
     case "upload-folder": closeModal(); $("#folderInput").click(); break;
     case "web-import-modal": openWebImportModal(); break;
     case "web-import": await importWebArticle(); break;
@@ -3496,6 +3531,7 @@ async function handleAction(action, element, event) {
     case "research-tools": openResearchTools(); break;
     case "research-run": await runResearch(element.dataset.mode, element.dataset.label); break;
     case "epub-layout": openEpubLayoutModal(); break;
+    case "toggle-cet": await toggleCet(Number(element.dataset.id || S.doc?.id)); break;
     case "apply-epub-layout": await applyEpubLayout(); break;
     case "save-doc-edit": await saveDocEdit(); break;
     case "enrich-doc": await enrichDoc(); break;
@@ -3628,6 +3664,7 @@ async function handleAction(action, element, event) {
 function setLibraryFilter(filter) {
   S.library.favorite = filter === "favorite";
   S.library.status = ["unread", "reading", "finished"].includes(filter) ? filter : "";
+  S.library.cet = filter === "cet";
   S.library.collection = null;
   renderCollections();
   refreshLibrary();
@@ -3982,6 +4019,10 @@ function wireEvents() {
   $("#fileInput").addEventListener("change", (event) => { uploadFiles(event.target.files); event.target.value = ""; });
   $("#folderInput").addEventListener("change", (event) => { uploadFiles(event.target.files); event.target.value = ""; });
   $("#collapseSidebar").addEventListener("click", () => $("#app").classList.toggle("sidebar-collapsed"));
+  $("#sidebarToggle").addEventListener("click", () => {
+    if (S.focusMode) toggleFocusMode(false);
+    $("#app").classList.toggle("sidebar-collapsed");
+  });
   $("#themeBtn").addEventListener("click", cycleTheme);
   $("#settingsBtn").addEventListener("click", openSettings);
   $("#notifyBtn").addEventListener("click", openNotificationsModal);

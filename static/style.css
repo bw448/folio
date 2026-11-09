@@ -327,6 +327,7 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .app.focus-mode.with-panel { grid-template-columns: minmax(0, 1fr) 390px; }
 .app.focus-mode .sidebar { display: none; }
 .app.focus-mode .reader-rail { display: none; }
+.app.focus-mode #sidebarToggle { display: none; }
 
 .sidebar {
   display: flex;
@@ -1526,6 +1527,11 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border: 1px s
 .cet-saved-title { font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--faint); margin: 20px 0 8px; }
 .cet-saved-item { padding: 9px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
 .cet-saved-item:hover { background: var(--soft); border-color: var(--border); }
+.cet-doc-item { padding: 8px 9px; border-radius: 9px; border: 1px solid var(--border); background: var(--card); cursor: pointer; margin-bottom: 7px; }
+.cet-doc-item:hover { border-color: var(--accent); }
+.cet-doc-item b { display: block; font-size: 12px; font-weight: 600; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cet-doc-item span { display: block; margin-top: 3px; color: var(--faint); font-size: 10.5px; }
+.cet-doc-item.empty { cursor: default; color: var(--faint); font-size: 11px; line-height: 1.5; background: var(--soft); border-style: dashed; }
 .cet-saved-item b { display: block; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cet-saved-item span { font-size: 11px; color: var(--faint); }
 .zotero-item {
