@@ -38,18 +38,64 @@ def _force_light_titlebar() -> None:
     if sys.platform != "win32":
         return
     try:
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        dwmapi = ctypes.windll.dwmapi
+        pid = os.getpid()
+
+        def candidates() -> list[tuple[int, int]]:
+            found: list[tuple[int, int]] = []
+
+            @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            def callback(hwnd, _):
+                if not user32.IsWindowVisible(hwnd):
+                    return True
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length <= 0:
+                    return True
+                buffer = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buffer, length + 1)
+                if buffer.value != TITLE:
+                    return True
+                proc = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc))
+                rect = wintypes.RECT()
+                user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                area = max(0, rect.right - rect.left) * max(0, rect.bottom - rect.top)
+                found.append((int(hwnd), area if proc.value == pid else area // 2))
+                return True
+
+            user32.EnumWindows(callback, 0)
+            return found
+
         for _ in range(80):
-            hwnd = ctypes.windll.user32.FindWindowW(None, TITLE)
-            if hwnd:
-                off = ctypes.c_int(0)
-                for attr in (20, 19):
-                    ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                        hwnd, attr, ctypes.byref(off), ctypes.sizeof(off)
+            windows = sorted(candidates(), key=lambda item: item[1], reverse=True)
+            if windows:
+                hwnd = windows[0][0]
+                for _ in range(4):
+                    off = ctypes.c_int(0)
+                    for attr in (20, 19):
+                        dwmapi.DwmSetWindowAttribute(
+                            ctypes.c_void_p(hwnd), attr,
+                            ctypes.byref(off), ctypes.sizeof(off),
+                        )
+                    caption = ctypes.c_int(0x00F5F5F7)
+                    dwmapi.DwmSetWindowAttribute(
+                        ctypes.c_void_p(hwnd), 35,
+                        ctypes.byref(caption), ctypes.sizeof(caption),
                     )
-                caption = ctypes.c_int(0x00F5F5F7)
-                ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                    hwnd, 35, ctypes.byref(caption), ctypes.sizeof(caption)
-                )
+                    border = ctypes.c_int(0x00E5E5EA)
+                    dwmapi.DwmSetWindowAttribute(
+                        ctypes.c_void_p(hwnd), 34,
+                        ctypes.byref(border), ctypes.sizeof(border),
+                    )
+                    text = ctypes.c_int(0x001D1D1F)
+                    dwmapi.DwmSetWindowAttribute(
+                        ctypes.c_void_p(hwnd), 36,
+                        ctypes.byref(text), ctypes.sizeof(text),
+                    )
+                    time.sleep(0.2)
                 return
             time.sleep(0.1)
     except Exception:  # noqa: BLE001
