@@ -152,12 +152,12 @@ function debounce(fn, wait = 250) {
   let timer;
   return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), wait); };
 }
-function toast(message, type = "") {
+function toast(message, type = "", duration = 2800) {
   const box = $("#toast");
   box.textContent = message;
   box.className = "toast" + (type === "error" ? " error" : "");
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => box.classList.add("hidden"), 2800);
+  toast.timer = setTimeout(() => box.classList.add("hidden"), duration);
 }
 const loadingHtml = (text) => `<div class="loading"><span class="spinner"></span><span>${escapeHtml(text)}</span></div>`;
 const errorHtml = (message) => `<div class="error-box">${escapeHtml(message)}${/Key|配置|接口|模型/i.test(message) ? '<br><button class="ghost" data-action="open-settings">打开设置</button>' : ""}</div>`;
@@ -1786,10 +1786,59 @@ function looksLikeQuestion(text) {
   return false;
 }
 
+function snapSelectionToWords() {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount || selection.isCollapsed) return;
+  const range = selection.getRangeAt(0);
+  const nodeEl = (node) => node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  const startEl = nodeEl(range.startContainer)?.closest?.(".tw");
+  const endEl = nodeEl(range.endContainer)?.closest?.(".tw");
+  if (!startEl || !endEl || !startEl.closest("#textLayer") || !endEl.closest("#textLayer")) return;
+  const startText = startEl.firstChild;
+  const endText = endEl.firstChild;
+  if (!startText || startText.nodeType !== Node.TEXT_NODE || !endText || endText.nodeType !== Node.TEXT_NODE) return;
+  const next = document.createRange();
+  const startBeforeEnd = Boolean(startEl.compareDocumentPosition(endEl) & Node.DOCUMENT_POSITION_FOLLOWING);
+  if (startEl === endEl) {
+    next.setStart(startText, 0);
+    next.setEnd(startText, startText.length);
+  } else if (startBeforeEnd) {
+    next.setStart(startText, 0);
+    next.setEnd(endText, endText.length);
+  } else {
+    next.setStart(endText, 0);
+    next.setEnd(startText, startText.length);
+  }
+  selection.removeAllRanges();
+  selection.addRange(next);
+}
+
+let lastCopiedText = "";
+async function copySelectionText(text) {
+  if (!text || text === lastCopiedText) return;
+  lastCopiedText = text;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    try {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    } catch { return; }
+  }
+  toast("已复制", "", 1100);
+}
+
 function captureSelection() {
   if (S.view !== "reader" || !S.doc || S.mode !== "page") return;
   const selection = window.getSelection();
   if (!selection || !selection.rangeCount || selection.isCollapsed) { hidePopup(); return; }
+  snapSelectionToWords();
   const text = selection.toString().replace(/\s+/g, " ").trim();
   if (!text) { hidePopup(); return; }
   const rects = selectionRects();
@@ -1808,6 +1857,7 @@ function captureSelection() {
     isQuestion: looksLikeQuestion(text), word: core,
     context: getContext(text), x: rangeRect.left, y: rangeRect.bottom, token,
   };
+  if (S.settings?.auto_copy !== false) copySelectionText(text);
   showPopup();
 }
 
@@ -3241,6 +3291,7 @@ function openSettings() {
       ${[13, 15, 17, 19].map((size) => `<option value="${size}" ${String(settings.epub_font_size || 15) === String(size) ? "selected" : ""}>${size} pt${size === 15 ? "（标准）" : ""}</option>`).join("")}
     </select></label>
     <label style="display:flex;align-items:center;gap:7px;font-size:12px"><input id="autoLookup" type="checkbox" ${settings.auto_lookup !== false ? "checked" : ""} style="width:auto">划词自动查词（单词 / 短语，带发音）</label>
+    <label style="display:flex;align-items:center;gap:7px;font-size:12px"><input id="autoCopy" type="checkbox" ${settings.auto_copy !== false ? "checked" : ""} style="width:auto">选中文字自动复制</label>
     <div class="hint">影响之后导入的 EPUB；已经导入的 EPUB 可以在「文献 → 更多 → EPUB 排版」里重新生成页面。</div>
     <div class="panel-section-title" style="margin-top:18px">跨设备同步（WebDAV）</div>
     <label>WebDAV 地址<input id="syncUrl" value="${escapeAttr(settings.sync_url || "")}" placeholder="https://dav.jianguoyun.com/dav/Folio"></label>
@@ -3286,6 +3337,7 @@ async function saveSettings(close = true) {
     sync_pdfs: $("#syncPdfs")?.checked ? "1" : "0",
     epub_font_size: $("#epubFontSize")?.value || "15",
     auto_lookup: $("#autoLookup")?.checked ? "1" : "0",
+    auto_copy: $("#autoCopy")?.checked ? "1" : "0",
   };
   S.settings = await api("/api/settings", {
     method: "POST",

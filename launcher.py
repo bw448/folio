@@ -22,7 +22,7 @@ from server import app
 HOST = "127.0.0.1"
 PORT = 8788
 URL = f"http://{HOST}:{PORT}"
-WINDOW_URL = f"{URL}/?v=0.9.2"
+WINDOW_URL = f"{URL}/?v=0.9.3"
 TITLE = "Folio"
 
 FROZEN = bool(getattr(sys, "frozen", False))

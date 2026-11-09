@@ -131,6 +131,7 @@ SETTING_DEFAULTS = {
     "last_sync": "",
     "epub_font_size": "15",
     "auto_lookup": "1",
+    "auto_copy": "1",
 }
 
 TAG_NAMES = {
@@ -670,6 +671,7 @@ class SettingsIn(BaseModel):
     sync_pdfs: str = ""
     epub_font_size: str = ""
     auto_lookup: str = ""
+    auto_copy: str = ""
 
 
 class WordAIIn(BaseModel):
@@ -2156,6 +2158,7 @@ def read_settings() -> dict[str, Any]:
         "sync_pdfs": get_setting("sync_pdfs") == "1",
         "epub_font_size": get_setting("epub_font_size") or "15",
         "auto_lookup": get_setting("auto_lookup") != "0",
+        "auto_copy": get_setting("auto_copy") != "0",
         "last_sync": get_setting("last_sync"),
     }
 
@@ -2314,6 +2317,8 @@ def write_settings(payload: SettingsIn) -> dict[str, Any]:
         set_setting("epub_font_size", str(size))
     if payload.auto_lookup:
         set_setting("auto_lookup", "1" if payload.auto_lookup == "1" else "0")
+    if payload.auto_copy:
+        set_setting("auto_copy", "1" if payload.auto_copy == "1" else "0")
     return read_settings()
 
 
