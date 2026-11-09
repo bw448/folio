@@ -110,7 +110,7 @@ if STORAGE_CONFIGURED and not ECDICT_PATH.exists():
     if seed.exists():
         shutil.copy2(seed, ECDICT_PATH)
 
-app = FastAPI(title="Folio", version="0.8.0")
+app = FastAPI(title="Folio", version="0.9.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 scheduler = Scheduler()
@@ -1768,7 +1768,7 @@ async def enrich_document(doc_id: int) -> dict[str, Any]:
         text = " ".join(row["text"] for row in rows)
         match = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", text)
         doi = match.group(0).rstrip(".,;") if match else ""
-    headers = {"User-Agent": "Folio/0.8 (mailto:local@example.com)"}
+    headers = {"User-Agent": "Folio/0.9 (mailto:local@example.com)"}
     arxiv_id = ""
     if doi.startswith("10.48550/arXiv."):
         arxiv_id = doi.split("arXiv.")[-1]
@@ -3191,7 +3191,7 @@ async def ai_quiz(payload: QuizIn) -> dict[str, Any]:
 # literature discovery & research agent
 # ---------------------------------------------------------------------------
 DISCOVER_SOURCES = ("arxiv", "openalex", "crossref", "semantic", "pubmed")
-DISCOVER_HEADERS = {"User-Agent": "Folio/0.8 (mailto:local@example.com)"}
+DISCOVER_HEADERS = {"User-Agent": "Folio/0.9 (mailto:local@example.com)"}
 
 
 def _paper(

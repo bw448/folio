@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
-datas = [("static", "static"), ("data/ecdict.db", "seed")]
+datas = [("static", "static"), ("data/ecdict.db", "seed"), ("folio.ico", ".")]
 binaries = []
 hiddenimports = collect_submodules("uvicorn")
 
@@ -13,6 +13,7 @@ for package in (
     "trafilatura",
     "genanki",
     "winotify",
+    "webview",
 ):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(package)
     datas += pkg_datas
@@ -44,7 +45,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
 )
 coll = COLLECT(

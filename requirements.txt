@@ -9,3 +9,5 @@ numpy
 rapidocr_onnxruntime
 trafilatura
 winotify
+
+pywebview
