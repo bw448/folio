@@ -1041,7 +1041,7 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 }
 .tw.saved { background: var(--saved-bg); border-bottom: 1px dashed var(--saved-line); }
 .tw:hover { background: var(--hover-wash); }
-.text-layer ::selection { background: var(--selection-bg); }
+.text-layer ::selection, .text-layer .tw::selection { background: var(--selection-bg); color: transparent; }
 .hl-layer, .search-layer { position: absolute; inset: 0; pointer-events: none; }
 .hl { position: absolute; border-radius: 2px; mix-blend-mode: multiply; opacity: 0.4; }
 .hl.yellow { background: var(--hl-yellow); }
