@@ -22,8 +22,8 @@ from server import app
 HOST = "127.0.0.1"
 PORT = 8788
 URL = f"http://{HOST}:{PORT}"
-WINDOW_URL = f"{URL}/?v=0.9.0"
-TITLE = "Folio 页间"
+WINDOW_URL = f"{URL}/?v=0.9.1"
+TITLE = "Folio"
 
 FROZEN = bool(getattr(sys, "frozen", False))
 APP_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent

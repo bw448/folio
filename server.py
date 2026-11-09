@@ -1,4 +1,4 @@
-"""Folio / 页间 — a local-first English reading workbench.
+"""Folio — a local-first English reading workbench.
 
 One app that merges the parts we liked from Zotero (three-pane reader + annotations),
 PaperLens (ECDICT lookup + vocabulary review), Readwise (highlight -> daily review),
@@ -5270,7 +5270,7 @@ def _show_system_toast(title: str, body: str) -> None:
         from winotify import Notification
 
         Notification(
-            app_id="Folio 页间", title=title, msg=body[:200], duration="short"
+            app_id="Folio", title=title, msg=body[:200], duration="short"
         ).show()
     except Exception:  # noqa: BLE001
         pass

@@ -1,4 +1,4 @@
-# Folio 页间
+# Folio
 
 **本地优先的英文阅读、四六级学习与科研工作台。**  
 **A local-first Windows workbench for English reading, CET-4/6 study and research.**
@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-8a5a1f)](requirements.txt)
 [![No telemetry](https://img.shields.io/badge/telemetry-none-3d6b4f)](#数据与隐私)
 
-Folio（页间）是一个本地优先的桌面阅读与研究工作台：读英文论文、备考四六级、整理科研资料。  
+Folio 是一个本地优先的桌面阅读与研究工作台：读英文论文、备考四六级、整理科研资料。  
 它把 PDF/EPUB 阅读、离线词典、AI 讲解、间隔重复、题目解析、手动错题本、文献发现和 WebDAV 同步放在一个软件里。所有数据保存在第一次启动时选择的资料库文件夹中，不上传遥测。
 
 Folio is a local-first desktop workbench for reading English papers, preparing for CET-4/6, and organizing research. It combines a PDF/EPUB reader, offline dictionary, AI explanations, spaced repetition, question analysis, a manual wrong-answer notebook, literature discovery and optional WebDAV sync. Your data stays in a library folder you choose on first launch; there is no telemetry.

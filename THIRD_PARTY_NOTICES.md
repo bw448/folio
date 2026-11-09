@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Folio (页间) is licensed under **AGPL-3.0**. It depends on the following
+Folio is licensed under **AGPL-3.0**. It depends on the following
 open-source projects and data sources. Their licenses apply to their own code
 and data; this file is attribution, not a replacement for their license texts.
 
