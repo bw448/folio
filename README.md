@@ -40,6 +40,7 @@ Folio is a local-first desktop workbench for reading English papers, preparing f
 
 ### 阅读 / Reading
 
+- **拖入导入**：在首页、图书馆、四六级或阅读器任意位置把 PDF / EPUB 拖进窗口即可
 - **PDF / EPUB 阅读器**：页面渲染、文字层划词、缩略图、目录、全文搜索、阅读进度
 - **EPUB 重排**：导入时自动排成 480×720 的屏幕版 PDF，默认 15pt，保留章节目录；支持 13/15/17/19pt 重新排版
 - **扫描版 OCR**：RapidOCR 离线识别，识别后可划词、搜索、翻译、总结

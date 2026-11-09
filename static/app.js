@@ -4033,9 +4033,34 @@ function wireEvents() {
     if (saveCollectionButton) { event.preventDefault(); saveCollection(); }
   });
 
-  const reader = $("#readerStage");
-  ["dragenter", "dragover"].forEach((name) => reader.addEventListener(name, (event) => event.preventDefault()));
-  reader.addEventListener("drop", (event) => { event.preventDefault(); uploadFiles(event.dataTransfer.files); });
+  let dragDepth = 0;
+  const dropOverlay = $("#dropOverlay");
+  const hasFiles = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
+  document.addEventListener("dragenter", (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    dragDepth += 1;
+    dropOverlay.classList.remove("hidden");
+  });
+  document.addEventListener("dragover", (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  });
+  document.addEventListener("dragleave", (event) => {
+    if (!hasFiles(event)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth || !event.relatedTarget) dropOverlay.classList.add("hidden");
+  });
+  document.addEventListener("drop", (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    dragDepth = 0;
+    dropOverlay.classList.add("hidden");
+    const files = Array.from(event.dataTransfer.files || []);
+    if (files.length) uploadFiles(files);
+    else toast("只支持 PDF / EPUB 文件", "error");
+  });
 
   document.addEventListener("keydown", (event) => {
     if (event.target.matches("input, textarea, select")) return;
