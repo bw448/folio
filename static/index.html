@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f4ee">
+  <title>Folio · 页间</title>
+  <meta name="description" content="Folio 页间：本地优先的英文阅读与研究工作台，读论文、查文献、学四六级。">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <script>
+    try {
+      const saved = localStorage.getItem("folio-theme") || localStorage.getItem("readmate-theme");
+      document.documentElement.dataset.theme = saved === "sepia" ? "sepia" : "light";
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="/static/style.css?v=0.8.0">
+</head>
+<body>
+<a class="skip-link" href="#main">跳到主要内容</a>
+<div id="app" class="app">
+  <aside id="sidebar" class="sidebar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 40 40" focusable="false">
+          <rect class="mark-tile" x="1" y="1" width="38" height="38" rx="11"/>
+          <path class="mark-page" d="M11.5 9.5h10.2L29 17.2V30.5H11.5Z"/>
+          <path class="mark-fold" d="M21.7 9.5v7.7H29Z"/>
+          <path class="mark-spine" d="M8.3 12.2v15.6"/>
+        </svg>
+      </div>
+      <div class="brand-copy">
+        <strong>Folio</strong>
+        <span>页间 · 阅读研究</span>
+      </div>
+      <button id="collapseSidebar" class="icon subtle" title="收起侧栏">«</button>
+    </div>
+
+    <nav class="primary-nav">
+      <button class="nav-link" data-view="home"><span class="nav-icon" data-icon="home"></span><span>首页</span></button>
+      <button class="nav-link" data-view="library"><span class="nav-icon" data-icon="library"></span><span>图书馆</span><em id="libraryCount"></em></button>
+      <button class="nav-link" data-view="discover"><span class="nav-icon" data-icon="compass"></span><span>发现</span></button>
+      <div class="nav-section-label">学习</div>
+      <button class="nav-link" data-view="cet"><span class="nav-icon" data-icon="pen"></span><span>四六级</span></button>
+      <button class="nav-link" data-view="vocab"><span class="nav-icon" data-icon="book"></span><span>生词本</span><em id="vocabCount"></em></button>
+      <button class="nav-link" data-view="mistakes"><span class="nav-icon" data-icon="target"></span><span>错题本</span><em id="mistakeCount"></em></button>
+      <button class="nav-link" data-view="review"><span class="nav-icon" data-icon="refresh"></span><span>今日复习</span><em id="dueBadge"></em></button>
+      <button class="nav-link" data-view="stats"><span class="nav-icon" data-icon="chart"></span><span>学习统计</span></button>
+    </nav>
+
+    <div class="sidebar-section">
+      <div class="section-head"><span>分类</span><button id="addCollection" class="icon subtle" title="新建分类">＋</button></div>
+      <div id="collectionList" class="collection-list"></div>
+    </div>
+
+    <div class="sidebar-footer">
+      <button id="themeBtn" class="icon subtle" title="切换护眼纸色">◐</button>
+      <button id="notifyBtn" class="icon subtle" title="通知"><span data-icon="bell"></span><em id="notifyBadge"></em></button>
+      <button id="settingsBtn" class="ghost small">设置</button>
+    </div>
+  </aside>
+
+  <main id="main" class="main">
+    <header id="topbar" class="topbar">
+      <div class="topbar-left">
+        <button id="backBtn" class="icon subtle hidden" title="返回">←</button>
+        <div id="breadcrumb" class="breadcrumb">首页</div>
+        <span id="docMeta" class="doc-meta"></span>
+      </div>
+      <div id="topbarCenter" class="topbar-center"></div>
+      <div id="topbarRight" class="topbar-right"></div>
+    </header>
+
+    <section id="views" class="views">
+      <section id="homeView" class="view"></section>
+      <section id="libraryView" class="view hidden"></section>
+      <section id="discoverView" class="view hidden"></section>
+      <section id="readerView" class="view reader-view hidden">
+        <aside id="readerRail" class="reader-rail">
+          <div class="rail-tabs">
+            <button class="rail-tab active" data-rail="thumbs">缩略图</button>
+            <button class="rail-tab" data-rail="outline">目录</button>
+            <button class="rail-tab" data-rail="search">搜索</button>
+          </div>
+          <div id="railBody" class="rail-body"></div>
+        </aside>
+        <div id="readerStage" class="reader-stage">
+          <div id="readerBanner" class="reader-banner hidden"></div>
+          <div id="pageWrap" class="page-wrap hidden">
+            <img id="pageImg" alt="PDF page" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">
+            <div id="textLayer" class="text-layer"></div>
+            <div id="hlLayer" class="hl-layer"></div>
+            <div id="searchLayer" class="search-layer"></div>
+          </div>
+          <div id="bilingualPane" class="bilingual-pane hidden"></div>
+          <div id="readerEmpty" class="reader-empty hidden">
+            <div class="reader-empty-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/></svg></div>
+            <h2>从图书馆打开一篇文献</h2>
+            <p>或者把 PDF 拖进窗口。</p>
+          </div>
+        </div>
+        <footer id="readerStatus" class="reader-status"></footer>
+      </section>
+      <section id="cetView" class="view hidden"></section>
+      <section id="vocabView" class="view hidden"></section>
+      <section id="mistakesView" class="view hidden"></section>
+      <section id="reviewView" class="view hidden"></section>
+      <section id="statsView" class="view hidden"></section>
+    </section>
+  </main>
+
+  <aside id="panel" class="panel hidden">
+    <div class="panel-head">
+      <div class="panel-tabs">
+        <button class="panel-tab active" data-tab="dict">词典</button>
+        <button class="panel-tab" data-tab="chat">AI</button>
+        <button class="panel-tab" data-tab="translate">翻译</button>
+        <button class="panel-tab" data-tab="summary">摘要</button>
+        <button class="panel-tab" data-tab="marks">笔记</button>
+      </div>
+      <button id="closePanel" class="icon subtle" title="收起面板">×</button>
+    </div>
+    <div id="panelBody" class="panel-body"></div>
+  </aside>
+</div>
+
+<div id="selectionPopup" class="popup hidden"></div>
+<div id="toast" class="toast hidden"></div>
+<div id="modalRoot"></div>
+<input id="fileInput" type="file" accept=".pdf,.epub" multiple hidden>
+<input id="folderInput" type="file" accept=".pdf,.epub" webkitdirectory multiple hidden>
+
+<script src="/static/app.js?v=0.8.0"></script>
+</body>
+</html>

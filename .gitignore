@@ -1,0 +1,33 @@
+.venv/
+__pycache__/
+*.pyc
+data/readmate.db
+data/pdfs/*
+data/cache/*
+data/exports/*
+data/readmate-backup.db
+data/readmate-vocab.apkg
+data/ecdict.csv
+data/ecdict.db
+
+# build / release artifacts
+build/
+dist/
+*.tmp.pdf
+storage.json
+
+# generated / local-only
+data/*.apkg
+data/*backup*.db
+data/*.csv
+data/*.db
+.hallmark/
+_shot*.png
+_lint*.txt
+_test*.py
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
