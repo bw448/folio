@@ -97,6 +97,8 @@ Folio-0.9-win64.zip   (约 223 MB)
 
 `Folio.exe` 不能单独拷走，必须和 `_internal/` 一起使用。
 
+> 需要 Windows 10/11。界面使用系统 WebView2 Runtime；Windows 11 默认自带，Win10 可通过 Edge 更新安装。
+
 > 未签名 exe，Windows SmartScreen 可能提示：更多信息 → 仍要运行。
 
 ### 需要联网的功能 / Online features
