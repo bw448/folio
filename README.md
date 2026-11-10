@@ -4,7 +4,7 @@
 **A local-first Windows workbench for English reading, CET-4/6 study and research.**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-2f4a3c)](LICENSE)
-[![Platform: Windows](https://img.shields.io/badge/platform-Windows-6f685d)](https://github.com/bw448/folio-reader/releases/latest)
+[![Platform: Windows](https://img.shields.io/badge/platform-Windows-6f685d)](https://github.com/bw448/folio/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-8a5a1f)](requirements.txt)
 [![No telemetry](https://img.shields.io/badge/telemetry-none-3d6b4f)](#数据与隐私)
 
@@ -88,7 +88,7 @@ Folio is a local-first desktop workbench for reading English papers, preparing f
 
 ## 下载使用 / Install
 
-到 [Releases](https://github.com/bw448/folio-reader/releases/latest) 下载：
+到 [Releases](https://github.com/bw448/folio/releases/latest) 下载：
 
 ```
 Folio-0.9-win64.zip   (约 223 MB)
@@ -118,8 +118,8 @@ AI 对话/翻译/摘要/解题/研究工具、文献发现、网页导入、WebD
 要求：Windows、Python 3.11+。
 
 ```bat
-git clone https://github.com/bw448/folio-reader.git
-cd folio-reader
+git clone https://github.com/bw448/folio.git
+cd folio
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 ```
@@ -211,7 +211,7 @@ ecdict.db      离线词典
 ## 项目结构 / Layout
 
 ```
-folio-reader/
+folio/
 ├─ server.py            FastAPI 后端：文献、阅读、词典、AI、复习、同步、存储
 ├─ launcher.py          exe 启动器
 ├─ static/              原生前端
