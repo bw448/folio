@@ -82,7 +82,7 @@ Folio is a local-first desktop workbench for reading English papers, preparing f
 - **删除/内容冲突中心**：逐字段显示本机/云端差异，选择保留哪一侧
 - **资料库位置可选**：第一次启动必须选择；之后可在设置里更改
 - **原生桌面窗口**：WebView2 内嵌窗口，没有浏览器标签、地址栏或控制台窗口
-- **本地优先**：服务只监听 `127.0.0.1:8788`，没有账号系统，不上传遥测
+- **本地优先**：服务只监听 `127.0.0.1`（默认 `8788`，被占用时自动改用空闲端口），没有账号系统，不上传遥测
 
 ---
 
@@ -91,7 +91,7 @@ Folio is a local-first desktop workbench for reading English papers, preparing f
 到 [Releases](https://github.com/bw448/folio/releases/latest) 下载：
 
 ```
-Folio-0.9-win64.zip   (约 223 MB)
+Folio-0.9.1-win64.zip   (约 223 MB)
 ```
 
 1. 解压得到 `Folio/` 文件夹
@@ -166,7 +166,7 @@ dist\Folio\_internal\
 
 用的是 PyInstaller **onedir**，不是 onefile。原因：这个项目依赖 PyMuPDF、RapidOCR/ONNX、ECDICT，onedir 启动快、杀毒误报少、更新和排查都更简单。
 
-Release 把整个 `dist\Folio\` 压成 `Folio-0.9-win64.zip` 上传即可。
+Release 把整个 `dist\Folio\` 压成 `Folio-0.9.1-win64.zip` 上传即可。
 
 ---
 
@@ -266,7 +266,7 @@ Copyright (C) 2026 bw448.
 
 ## 常见问题 / FAQ
 
-**窗口打不开？** 查看 `%LOCALAPPDATA%\Folio\desktop.log`；端口被占用时关掉占用 `8788` 的程序。
+**窗口打不开？** 查看 `%LOCALAPPDATA%\Folio\desktop.log`。0.9.1 起默认用 `8788`，端口被别的东西占用会自动换一个空闲端口，不会再因端口冲突打不开；重复双击也只会把已有窗口调到前台。
 
 **AI 报 400？** 设置里填 Key，点「测试连接」。Ollama 用 `http://127.0.0.1:11434/v1`。
 
