@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import hashlib
+import html as html_lib
 import io
 import json
 import os
@@ -110,7 +111,7 @@ if STORAGE_CONFIGURED and not ECDICT_PATH.exists():
     if seed.exists():
         shutil.copy2(seed, ECDICT_PATH)
 
-app = FastAPI(title="Folio", version="0.9.0")
+app = FastAPI(title="Folio", version="0.11.0")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 scheduler = Scheduler()
@@ -387,7 +388,7 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 query TEXT NOT NULL,
-                sources TEXT NOT NULL DEFAULT 'arxiv,openalex',
+                sources TEXT NOT NULL DEFAULT 'arxiv,openalex,dlxb,zrzyxb',
                 days INTEGER NOT NULL DEFAULT 30,
                 created_at TEXT NOT NULL,
                 last_checked TEXT,
@@ -1791,7 +1792,7 @@ async def enrich_document(doc_id: int) -> dict[str, Any]:
         text = " ".join(row["text"] for row in rows)
         match = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", text)
         doi = match.group(0).rstrip(".,;") if match else ""
-    headers = {"User-Agent": "Folio/0.9 (mailto:local@example.com)"}
+    headers = {"User-Agent": "Folio/0.11 (mailto:local@example.com)"}
     arxiv_id = ""
     if doi.startswith("10.48550/arXiv."):
         arxiv_id = doi.split("arXiv.")[-1]
@@ -3216,8 +3217,122 @@ async def ai_quiz(payload: QuizIn) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # literature discovery & research agent
 # ---------------------------------------------------------------------------
-DISCOVER_SOURCES = ("arxiv", "openalex", "crossref", "semantic", "pubmed")
-DISCOVER_HEADERS = {"User-Agent": "Folio/0.9 (mailto:local@example.com)"}
+INTERNATIONAL_SOURCE_KEYS = (
+    "arxiv", "openalex", "crossref", "semantic", "pubmed", "wrr",
+)
+DEFAULT_DISCOVER_SOURCES = ["arxiv", "openalex", "dlxb", "zrzyxb", "wrr"]
+DISCOVER_HEADERS = {"User-Agent": "Folio/0.11 (mailto:local@example.com)"}
+
+# The geores/Magtech platform indexes Chinese geography, resource and
+# ecology journals.  Each [JournalFilter] id returns exactly one journal.
+# Search via the fast geog.com.cn host; geores.com.cn and the journal's own
+# host are fallbacks.  pub_day is used to derive an issue date; only the two
+# core journals have a verified monthly day (地理学报 25th, 自然资源学报
+# 28th); the rest use the first of the issue month.
+MAGTECH_JOURNAL_DEFS = [
+    ("dlxb", 5, "地理学报", 25),
+    ("zrzyxb", 8, "自然资源学报", 28),
+    ("geo_10", 10, "资源科学", 1),
+    ("geo_2", 2, "地理科学进展", 1),
+    ("geo_4", 4, "地理科学", 1),
+    ("geo_1", 1, "地理研究", 1),
+    ("geo_11", 11, "资源与生态学报", 1),
+    ("geo_24", 24, "热带地理", 1),
+    ("geo_34", 34, "湖泊科学", 1),
+    ("geo_7", 7, "地球信息科学学报", 1),
+    ("geo_14", 14, "经济地理", 1),
+    ("geo_30", 30, "湿地科学", 1),
+    ("geo_37", 37, "干旱区地理", 1),
+    ("geo_38", 38, "干旱区研究", 1),
+    ("geo_35", 35, "山地学报", 1),
+    ("geo_72", 72, "风景园林", 1),
+    ("geo_25", 25, "中国生态旅游", 1),
+    ("geo_28", 28, "土壤与作物", 1),
+    ("geo_41", 41, "长江流域资源与环境", 1),
+    ("geo_51", 51, "第四纪研究", 1),
+    ("geo_43", 43, "中国沙漠", 1),
+    ("geo_16", 16, "世界地理研究", 1),
+    ("geo_56", 56, "中国土地科学", 1),
+    ("geo_15", 15, "人文地理", 1),
+    ("geo_75", 75, "自然资源遥感", 1),
+    ("geo_80", 80, "工程研究——跨学科视野中的工程", 1),
+    ("geo_42", 42, "冰川冻土", 1),
+    ("geo_45", 45, "遥感技术与应用", 1),
+    ("geo_54", 54, "地理与地理信息科学", 1),
+    ("geo_48", 48, "沉积学报", 1),
+    ("geo_46", 46, "地球科学进展", 1),
+    ("geo_53", 53, "时空信息学报", 1),
+    ("geo_52", 52, "亚热带资源与环境学报", 1),
+    ("geo_55", 55, "地域研究与开发", 1),
+    ("geo_60", 60, "地质与资源", 1),
+    ("geo_26", 26, "华南地理学报", 1),
+    ("geo_13", 13, "全球变化数据学报", 1),
+    ("geo_44", 44, "高原气象", 1),
+    ("geo_23", 23, "历史地理研究", 1),
+    ("geo_68", 68, "干旱区资源与环境", 1),
+    ("geo_65", 65, "贵州师范大学学报（自然科学版）", 1),
+    ("geo_70", 70, "国土资源科技管理", 1),
+    ("geo_66", 66, "资源开发与市场", 1),
+    ("geo_50", 50, "黄金科学技术", 1),
+    ("geo_61", 61, "旅游学刊", 1),
+    ("geo_81", 81, "地理标志", 1),
+    ("geo_76", 76, "应用基础与工程科学学报", 1),
+    ("geo_67", 67, "湖南文理学院学报（自然科学版）", 1),
+    ("geo_78", 78, "旅游科学", 1),
+    ("geo_59", 59, "自然资源情报", 1),
+    ("geo_69", 69, "湖南师范大学自然科学学报", 1),
+    ("geo_79", 79, "世界核地质科学", 1),
+    ("geo_74", 74, "中国人口·资源与环境", 1),
+    ("geo_62", 62, "旅游论坛", 1),
+    ("geo_58", 58, "自然资源信息化", 1),
+    ("geo_63", 63, "城市学刊", 1),
+    ("geo_49", 49, "天然气地球科学", 1),
+    ("geo_64", 64, "湖南城市学院学报（自然科学版）", 1),
+]
+MAGTECH_JOURNALS: dict[str, dict[str, Any]] = {
+    key: {
+        "key": key,
+        "name": name,
+        "filter": journal_id,
+        "search_bases": ["https://www.geog.com.cn", "https://www.geores.com.cn"],
+        "article_base": "https://www.geog.com.cn",
+        "pdf_api": "https://www.geog.com.cn/CN/article/showArticleFile.do",
+        "pdf_fallback_api": "https://www.geores.com.cn/CN/article/showArticleFile.do",
+        "pub_day": pub_day,
+    }
+    for key, journal_id, name, pub_day in MAGTECH_JOURNAL_DEFS
+}
+MAGTECH_JOURNALS["zrzyxb"].update({
+    "search_bases": [
+        "https://www.geog.com.cn",
+        "https://www.geores.com.cn",
+        "https://www.jnr.ac.cn",
+    ],
+    "pdf_fallback_api": "https://www.jnr.ac.cn/CN/article/showArticleFile.do",
+})
+CHINESE_SOURCE_KEYS = tuple(MAGTECH_JOURNALS)
+DISCOVER_SOURCES = INTERNATIONAL_SOURCE_KEYS + CHINESE_SOURCE_KEYS
+DISCOVER_SOURCE_META = [
+    {"key": "arxiv", "label": "arXiv", "group": "国际综合"},
+    {"key": "openalex", "label": "OpenAlex", "group": "国际综合"},
+    {"key": "crossref", "label": "Crossref", "group": "国际综合"},
+    {"key": "semantic", "label": "Semantic Scholar", "group": "国际综合"},
+    {"key": "pubmed", "label": "PubMed", "group": "国际综合"},
+    {"key": "wrr", "label": "Water Resources Research (WRR)", "group": "国际地学"},
+    *[
+        {"key": key, "label": cfg["name"], "group": "中文地学期刊"}
+        for key, cfg in MAGTECH_JOURNALS.items()
+    ],
+]
+MAGTECH_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.6",
+}
+CJK_RE = re.compile("[" + chr(0x4E00) + "-" + chr(0x9FFF) + "]+")
 
 
 def _paper(
@@ -3237,6 +3352,281 @@ def _paper(
         "citations": int(citations or 0),
         "published": published or "",
     }
+
+
+def _magtech_text(fragment: str) -> str:
+    """Turn a Magtech HTML fragment into clean text (entities are escaped twice)."""
+    text = re.sub(r"<[^>]+>", " ", fragment or "")
+    for _ in range(2):
+        text = html_lib.unescape(text)
+        text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _magtech_terms(query: str) -> list[str]:
+    """Split a user query into up to six search terms.
+
+    The official quick search escapes brackets and boolean words; we strip
+    brackets/quotes and split on whitespace and Chinese punctuation.  Each term
+    is queried separately because the platform's SQL parser does not reliably
+    apply AND between parenthesised OR groups (verified 2026-11-19).
+    """
+    raw = (query or "").strip()
+    if re.fullmatch(r"10\.\d{4,9}/\S+", raw):
+        return [raw]
+    cleaned = re.sub(r"[\[\]()（）［］【】“”‘’\"]", " ", raw)
+    terms = [
+        term.strip()
+        for term in re.split(r"[\s,，;；、　/／|｜]+", cleaned)
+        if term.strip() and term.strip().upper() not in {"AND", "OR", "NOT"}
+    ]
+    return terms[:6]
+
+
+def _magtech_term_sql(term: str, filter_id: int) -> str:
+    """One term, OR across title/abstract/keyword/author, restricted to a journal."""
+    if re.fullmatch(r"10\.\d{4,9}/\S+", term):
+        return f"(({term}[DOI]) AND {filter_id}[JournalFilter])"
+    return (
+        f"((({term}[Title]) OR ({term}[Abstract]) OR ({term}[Keyword]) "
+        f"OR ({term}[Author])) AND {filter_id}[JournalFilter])"
+    )
+
+
+def _magtech_key(paper: dict[str, Any]) -> str:
+    return (
+        str(paper.get("article_id") or "").strip()
+        or (paper.get("doi") or "").lower().strip()
+        or (paper.get("title") or "").strip()
+    )
+
+
+def _unique_magtech(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for paper in papers:
+        key = _magtech_key(paper)
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        unique.append(paper)
+    return unique
+
+
+def _magtech_published(year: str, issue: str, pub_day: int) -> str:
+    """Derive an issue publication date without opening every article page.
+
+    地理学报 publishes on the 25th and 自然资源学报 on the 28th, so those
+    two get exact dates.  Other journals use day 1 of the issue month as an
+    approximation.  Future issue dates are clamped to today so "最近 7 天"
+    behaves sensibly for the newest issue.
+    """
+    if not year.isdigit():
+        return ""
+    if issue.isdigit() and 1 <= int(issue) <= 12:
+        try:
+            value = datetime(int(year), int(issue), pub_day, tzinfo=timezone.utc)
+        except ValueError:
+            return f"{year}-01-01"
+        now = datetime.now(timezone.utc)
+        if value > now:
+            value = now
+        return value.date().isoformat()
+    return f"{year}-01-01"
+
+
+def _parse_magtech_results(html_text: str, cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Parse the result list returned by advancedSearchResult.do.
+
+    One result block carries everything the discovery UI needs: title, authors,
+    journal, year/volume/issue/pages, DOI, article link and the Chinese
+    abstract.  No per-article request is needed.
+    """
+    papers: list[dict[str, Any]] = []
+    for block in html_text.split('<li id="art')[1:]:
+        article_id = block.split('"', 1)[0].strip()
+        if not article_id.isdigit():
+            continue
+        title_match = re.search(
+            r'<div class="j-title-1">.*?<a href="([^"]+)"[^>]*>(.*?)</a>',
+            block, re.S,
+        )
+        if not title_match:
+            continue
+        url = title_match.group(1).strip()
+        title = _magtech_text(title_match.group(2))
+        if not title:
+            continue
+
+        author_match = re.search(r'<div class="j-author">(.*?)</div>', block, re.S)
+        authors = (
+            [
+                part.strip()
+                for part in re.split(r"[,，、;；]", _magtech_text(author_match.group(1)))
+                if part.strip()
+            ]
+            if author_match
+            else []
+        )
+        abstract_match = re.search(r'<div class="j-abstract">(.*?)</div>', block, re.S)
+        abstract = _magtech_text(abstract_match.group(1)) if abstract_match else ""
+
+        volume_match = re.search(r'<span class="j-volumn">\s*(.*?)</span>', block, re.S)
+        volume_text = _magtech_text(volume_match.group(1)) if volume_match else ""
+        journal = volume_text.split(".", 1)[0].strip() if volume_text else ""
+        year_match = re.search(
+            r"(\d{4})\s*,\s*(\d+)\(([^)]+)\)(?::\s*([0-9A-Za-z\-]+))?",
+            volume_text,
+        )
+        year = year_match.group(1) if year_match else ""
+        issue = year_match.group(3) if year_match else ""
+
+        doi_match = re.search(r'<a class="j-doi"[^>]*>(.*?)</a>', block, re.S)
+        doi = _magtech_text(doi_match.group(1)) if doi_match else ""
+        published = _magtech_published(year, issue, int(cfg.get("pub_day") or 0))
+        parsed_url = urlparse(url)
+        origin = (
+            f"{parsed_url.scheme}://{parsed_url.netloc}"
+            if parsed_url.scheme and parsed_url.netloc
+            else cfg["article_base"]
+        )
+        pdf_url = (
+            f"{origin}/CN/PDF/{doi}"
+            if doi
+            else f"{origin}/CN/article/downloadArticleFile.do?attachType=PDF&id={article_id}"
+        )
+
+        paper = _paper(
+            cfg["name"], title, authors, year, journal or cfg["name"], abstract,
+            url, pdf_url, doi, 0, published,
+        )
+        paper["source_key"] = cfg["key"]
+        paper["article_id"] = article_id
+        paper["pdf_api"] = cfg["pdf_api"]
+        paper["pdf_fallback_api"] = f"{origin}/CN/article/showArticleFile.do"
+        paper["issue"] = issue
+        papers.append(paper)
+    return papers
+
+
+async def _magtech_post(
+    client: httpx.AsyncClient, url: str, data: dict[str, Any]
+) -> httpx.Response:
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            response = await client.post(
+                url, data=data, headers=MAGTECH_HEADERS, timeout=15,
+            )
+            response.raise_for_status()
+            return response
+        except (httpx.HTTPError, OSError) as exc:
+            last_error = exc
+            await asyncio.sleep(0.6 * (attempt + 1))
+    raise RuntimeError(str(last_error) if last_error else "期刊官网请求失败")
+
+
+async def _search_magtech(
+    client: httpx.AsyncClient,
+    query: str,
+    days: int,
+    limit: int,
+    cfg: dict[str, Any],
+) -> list[dict[str, Any]]:
+    terms = _magtech_terms(query)
+    if not terms:
+        return []
+    pages = max(1, min(3, (max(1, limit) + 29) // 30))
+
+    async def fetch_term(term: str) -> list[dict[str, Any]]:
+        sql = _magtech_term_sql(term, cfg["filter"])
+        collected: list[dict[str, Any]] = []
+        for page in range(1, pages + 1):
+            page_sql = sql if page == 1 else f"({sql} AND {page}[Pager])"
+            response: httpx.Response | None = None
+            last_error: Exception | None = None
+            for base in cfg["search_bases"]:
+                try:
+                    candidate = await _magtech_post(
+                        client,
+                        f"{base}/CN/article/advancedSearchResult.do",
+                        {"searchSQL": page_sql},
+                    )
+                    # A normal page (including zero results) contains the
+                    # result-count span; a login/challenge page does not.
+                    if "blue-color" not in candidate.text:
+                        raise RuntimeError("期刊官网返回了异常页面")
+                    response = candidate
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+            if response is None:
+                if collected:
+                    break
+                raise RuntimeError(f"连接{cfg['name']}官网失败：{last_error}")
+            collected.extend(_parse_magtech_results(response.text, cfg))
+            if len(collected) >= limit:
+                break
+        return _unique_magtech(collected)[:limit]
+
+    # The platform's parser does not reliably AND two parenthesised OR groups,
+    # so query each term separately and intersect locally.  With one term this
+    # is the same single request as before.
+    term_sets: list[list[dict[str, Any]]] = []
+    errors: list[Exception] = []
+    for term in terms:
+        try:
+            term_sets.append(await fetch_term(term))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+            term_sets.append([])
+    if not any(term_sets):
+        if errors:
+            raise errors[0]
+        return []
+
+    papers = _unique_magtech([paper for group in term_sets for paper in group])
+    if len(terms) > 1:
+        # The platform's own AND is unreliable, so enforce it locally.  Two
+        # signals count as a match: the article appears in every per-term
+        # result set (covers keyword-only matches), or its title/abstract
+        # contains every term (covers papers the site's ranking missed).
+        term_keys = [
+            {_magtech_key(paper) for paper in group} for group in term_sets
+        ]
+        intersection = set.intersection(*term_keys) if all(term_keys) else set()
+        required = [term.lower() for term in terms]
+        strict_keys = {
+            _magtech_key(paper) for paper in papers
+            if all(
+                term in f"{paper.get('title', '')} {paper.get('abstract', '')}".lower()
+                for term in required
+            )
+        }
+        chosen = intersection | strict_keys
+        if chosen:
+            papers = [paper for paper in papers if _magtech_key(paper) in chosen]
+
+    if days:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+        papers = [
+            paper for paper in papers
+            if not paper.get("published") or paper["published"] >= cutoff
+        ]
+    return papers[:limit]
+
+
+async def _search_dlxb(
+    client: httpx.AsyncClient, query: str, days: int, limit: int
+) -> list[dict[str, Any]]:
+    return await _search_magtech(client, query, days, limit, MAGTECH_JOURNALS["dlxb"])
+
+
+async def _search_zrzyxb(
+    client: httpx.AsyncClient, query: str, days: int, limit: int
+) -> list[dict[str, Any]]:
+    return await _search_magtech(client, query, days, limit, MAGTECH_JOURNALS["zrzyxb"])
 
 
 async def _search_arxiv(client: httpx.AsyncClient, query: str, days: int, limit: int) -> list[dict[str, Any]]:
@@ -3275,15 +3665,29 @@ async def _search_arxiv(client: httpx.AsyncClient, query: str, days: int, limit:
     return papers
 
 
-async def _search_openalex(client: httpx.AsyncClient, query: str, days: int, limit: int) -> list[dict[str, Any]]:
+async def _search_openalex(
+    client: httpx.AsyncClient,
+    query: str,
+    days: int,
+    limit: int,
+    *,
+    source_id: str = "",
+    source_name: str = "OpenAlex",
+    source_key: str = "",
+) -> list[dict[str, Any]]:
     params: dict[str, Any] = {
         "search": query,
         "per-page": limit,
         "mailto": "local@example.com",
     }
+    filters = []
     if days:
         since = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
-        params["filter"] = f"from_publication_date:{since}"
+        filters.append(f"from_publication_date:{since}")
+    if source_id:
+        filters.append(f"primary_location.source.id:{source_id}")
+    if filters:
+        params["filter"] = ",".join(filters)
     response = await client.get("https://api.openalex.org/works", params=params)
     response.raise_for_status()
     papers = []
@@ -3301,15 +3705,26 @@ async def _search_openalex(client: httpx.AsyncClient, query: str, days: int, lim
             for authorship in item.get("authorships", [])
         ]
         venue = ((item.get("primary_location") or {}).get("source") or {}).get("display_name", "")
-        papers.append(
-            _paper(
-                "OpenAlex", item.get("title") or "", authors,
-                str(item.get("publication_year") or ""), venue, abstract,
-                item.get("id") or "", pdf_url, item.get("doi") or "",
-                item.get("cited_by_count") or 0, item.get("publication_date") or "",
-            )
+        paper = _paper(
+            source_name, item.get("title") or "", authors,
+            str(item.get("publication_year") or ""), venue, abstract,
+            item.get("id") or "", pdf_url, item.get("doi") or "",
+            item.get("cited_by_count") or 0, item.get("publication_date") or "",
         )
+        if source_key:
+            paper["source_key"] = source_key
+        papers.append(paper)
     return papers
+
+
+async def _search_wrr(
+    client: httpx.AsyncClient, query: str, days: int, limit: int
+) -> list[dict[str, Any]]:
+    """Water Resources Research (AGU/Wiley), via its OpenAlex source id."""
+    return await _search_openalex(
+        client, query, days, limit,
+        source_id="S204847658", source_name="WRR", source_key="wrr",
+    )
 
 
 async def _search_crossref(client: httpx.AsyncClient, query: str, days: int, limit: int) -> list[dict[str, Any]]:
@@ -3450,20 +3865,35 @@ def _openish(paper: dict[str, Any]) -> bool:
     return any(hint in url for hint in OPEN_PDF_HINTS)
 
 
+def _paper_preference(paper: dict[str, Any]) -> tuple[int, int, int]:
+    """Rank duplicates: Chinese-journal record first, then open PDF, then abstract."""
+    return (
+        1 if paper.get("source_key") in CHINESE_SOURCE_KEYS else 0,
+        1 if _openish(paper) else 0,
+        len(paper.get("abstract") or ""),
+    )
+
+
 def _dedupe_papers(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_doi: dict[str, int] = {}
     by_title: dict[str, int] = {}
     unique: list[dict[str, Any]] = []
     for paper in papers:
         doi = (paper.get("doi") or "").lower().strip()
-        title = re.sub(r"[^a-z0-9]+", "", (paper.get("title") or "").lower())[:120]
+        title = re.sub(
+            r"[^a-z0-9一-鿿]+", "", (paper.get("title") or "").lower()
+        )[:120]
         existing_index = by_doi.get(doi) if doi else None
         if existing_index is None and title:
             existing_index = by_title.get(title)
         if existing_index is not None:
-            # Prefer an open-access PDF over a paywalled landing page.
-            if _openish(paper) and not _openish(unique[existing_index]):
+            # Keep the richer record instead of the first one seen.
+            if _paper_preference(paper) > _paper_preference(unique[existing_index]):
                 unique[existing_index] = paper
+                if doi:
+                    by_doi[doi] = existing_index
+                if title:
+                    by_title[title] = existing_index
             continue
         index = len(unique)
         unique.append(paper)
@@ -3475,21 +3905,38 @@ def _dedupe_papers(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 async def _run_discovery(query: str, sources: list[str], days: int, limit: int) -> dict[str, Any]:
+    # Many journals selected at once should not multiply into hundreds of
+    # results per source; keep the total pool around 120-160 papers.
+    per_source_limit = max(4, min(limit, max(6, 120 // max(1, len(sources)))))
     async with httpx.AsyncClient(timeout=35, headers=DISCOVER_HEADERS, follow_redirects=True) as client:
         tasks = []
         names = []
         for source in sources:
             if source == "arxiv":
-                tasks.append(_search_arxiv(client, query, days, limit)); names.append("arXiv")
+                tasks.append(_search_arxiv(client, query, days, per_source_limit)); names.append("arXiv")
             elif source == "openalex":
-                tasks.append(_search_openalex(client, query, days, limit)); names.append("OpenAlex")
+                tasks.append(_search_openalex(client, query, days, per_source_limit)); names.append("OpenAlex")
             elif source == "crossref":
-                tasks.append(_search_crossref(client, query, days, limit)); names.append("Crossref")
+                tasks.append(_search_crossref(client, query, days, per_source_limit)); names.append("Crossref")
             elif source == "semantic":
-                tasks.append(_search_semantic(client, query, days, limit)); names.append("Semantic Scholar")
+                tasks.append(_search_semantic(client, query, days, per_source_limit)); names.append("Semantic Scholar")
             elif source == "pubmed":
-                tasks.append(_search_pubmed(client, query, days, limit)); names.append("PubMed")
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+                tasks.append(_search_pubmed(client, query, days, per_source_limit)); names.append("PubMed")
+            elif source == "wrr":
+                tasks.append(_search_wrr(client, query, days, per_source_limit)); names.append("WRR")
+            elif source in MAGTECH_JOURNALS:
+                cfg = MAGTECH_JOURNALS[source]
+                tasks.append(_search_magtech(client, query, days, per_source_limit, cfg))
+                names.append(cfg["name"])
+        # The Magtech host is a shared public service; cap total in-flight
+        # source requests when many journals are selected.
+        semaphore = asyncio.Semaphore(8)
+        async def guarded(task):
+            async with semaphore:
+                return await task
+        results = await asyncio.gather(
+            *[guarded(task) for task in tasks], return_exceptions=True
+        )
     papers: list[dict[str, Any]] = []
     errors = []
     for name, result in zip(names, results):
@@ -3511,22 +3958,46 @@ async def _run_discovery(query: str, sources: list[str], days: int, limit: int) 
     return {"papers": papers, "errors": errors}
 
 
-def _rank_discover(papers: list[dict[str, Any]], query: str, sort: str) -> list[dict[str, Any]]:
+def _discover_terms(query: str) -> list[str]:
+    """Tokenize English words plus Chinese runs and character bigrams.
+
+    Chinese has no spaces, so the old ASCII-only tokenizer reduced a query like
+    "城市热岛" to zero terms and skipped relevance ranking entirely.  Adding the
+    full run and its bigrams gives a useful overlap score without a tokenizer
+    dependency.
+    """
+    lowered = query.lower()
     terms = [
-        term for term in re.findall(r"[a-z0-9]+", query.lower())
+        term for term in re.findall(r"[a-z0-9]+", lowered)
         if len(term) > 2 and term not in STOPWORDS
     ]
-    if not terms:
-        terms = re.findall(r"[a-z0-9]+", query.lower())
+    cjk_terms: list[str] = []
+    for run in CJK_RE.findall(lowered):
+        if len(run) >= 2:
+            cjk_terms.append(run)
+            cjk_terms.extend(run[index:index + 2] for index in range(len(run) - 1))
+    if not terms and not cjk_terms:
+        return re.findall(r"[a-z0-9]+", lowered)
+    return list(dict.fromkeys(terms + cjk_terms))
+
+
+def _rank_discover(papers: list[dict[str, Any]], query: str, sort: str) -> list[dict[str, Any]]:
+    terms = _discover_terms(query)
+    phrase = query.strip().lower()
+    use_phrase = bool(phrase) and " " not in phrase and bool(CJK_RE.search(phrase))
     scored = []
     for paper in papers:
         text = f"{paper['title']} {paper['abstract']}".lower()
         title = paper["title"].lower()
         distinct = sum(1 for term in terms if term in text)
-        if distinct < max(1, min(3, (len(terms) + 1) // 2)):
-            continue
+        if terms:
+            need = 1 if len(terms) <= 2 else max(2, min(3, (len(terms) + 1) // 3))
+            if distinct < need:
+                continue
         score = distinct * 10 + sum(text.count(term) for term in terms) + sum(title.count(term) for term in terms) * 2
         score += min(5, (paper["citations"] or 0) ** 0.35)
+        if use_phrase and phrase in text:
+            score += 18
         item = dict(paper)
         item["_score"] = score
         scored.append(item)
@@ -3543,9 +4014,38 @@ def _rank_discover(papers: list[dict[str, Any]], query: str, sort: str) -> list[
     return scored
 
 
+def _mix_papers(papers: list[dict[str, Any]], limit: int = 24) -> list[dict[str, Any]]:
+    """Interleave Chinese-journal and international papers for the AI brief.
+
+    Sorting the combined pool by citation count would bury every Chinese paper
+    (their citation count is not fetched) below all English results, so the
+    synthesis model would never see them.  Alternating the two groups keeps the
+    brief balanced when both kinds of sources are selected.
+    """
+    chinese = [paper for paper in papers if paper.get("source_key") in CHINESE_SOURCE_KEYS]
+    other = [paper for paper in papers if paper.get("source_key") not in CHINESE_SOURCE_KEYS]
+    for group in (chinese, other):
+        group.sort(
+            key=lambda paper: (paper.get("citations") or 0, paper.get("published") or ""),
+            reverse=True,
+        )
+    mixed: list[dict[str, Any]] = []
+    while len(mixed) < limit and (chinese or other):
+        if chinese:
+            mixed.append(chinese.pop(0))
+        if len(mixed) < limit and other:
+            mixed.append(other.pop(0))
+    return mixed
+
+
+@app.get("/api/discover/sources")
+def discover_sources() -> dict[str, Any]:
+    return {"sources": DISCOVER_SOURCE_META, "defaults": DEFAULT_DISCOVER_SOURCES}
+
+
 @app.get("/api/discover/search")
 async def discover_search(
-    q: str = "", sources: str = "arxiv,openalex",
+    q: str = "", sources: str = "arxiv,openalex,dlxb,zrzyxb,wrr",
     days: int = 365, limit: int = 20, sort: str = "recent",
 ) -> dict[str, Any]:
     query = q.strip()
@@ -3553,10 +4053,11 @@ async def discover_search(
         raise HTTPException(400, "请输入搜索主题。")
     selected = [source.strip() for source in sources.split(",") if source.strip() in DISCOVER_SOURCES]
     if not selected:
-        selected = ["arxiv", "openalex"]
+        selected = list(DEFAULT_DISCOVER_SOURCES)
     limit = max(3, min(30, limit))
     days = max(0, min(3650, days))
-    result = await _run_discovery(query, selected, days, limit * 2)
+    fetch_limit = limit * 3 if sort == "relevance" else limit * 2
+    result = await _run_discovery(query, selected, days, fetch_limit)
     current_year = datetime.now(timezone.utc).year
     papers = [
         paper for paper in result["papers"]
@@ -3574,7 +4075,7 @@ async def discover_search(
 
 class AgentIn(BaseModel):
     query: str
-    sources: str = "arxiv,openalex"
+    sources: str = "arxiv,openalex,dlxb,zrzyxb,wrr"
     days: int = 365
     limit: int = 20
 
@@ -3584,9 +4085,24 @@ async def agent_research(payload: AgentIn) -> dict[str, Any]:
     query = payload.query.strip()
     if not query:
         raise HTTPException(400, "请输入研究主题。")
-    plan_prompt = f"""你是文献检索规划助手。根据用户主题，规划 1-3 条英文检索式。
-可选来源：arxiv, openalex, crossref, semantic, pubmed。
-只输出 JSON：{{"queries": ["英文检索式"], "sources": ["arxiv", "openalex"], "days": 365, "focus": "一句话说明重点"}}
+    available = [
+        source.strip()
+        for source in payload.sources.split(",")
+        if source.strip() in DISCOVER_SOURCES
+    ]
+    if not available:
+        available = list(DEFAULT_DISCOVER_SOURCES)
+    labels = {item["key"]: item["label"] for item in DISCOVER_SOURCE_META}
+    source_hint = "、".join(
+        f"{key}（{labels.get(key, key)}）" for key in available
+    )
+    plan_prompt = f"""你是文献检索规划助手。根据用户主题，规划 1-3 条检索式。
+用户已选来源（只能从中选择）：{source_hint}
+规则：
+- 主题是中文或涉及中国地理、资源、生态、土地利用等议题时，优先从用户已选的中文地学期刊中选择，并给出中文检索式。
+- 中文期刊的经典论文可能不在最近一年；不确定时把 days 设为 0（全部时间）。
+- 可以同时给出英文检索式，用于检索国际文献。
+只输出 JSON：{{"queries": ["检索式"], "sources": ["dlxb", "zrzyxb", "openalex"], "days": 0, "focus": "一句话说明重点"}}
 
 用户主题：{query}"""
     raw_plan = await ai_chat(
@@ -3596,15 +4112,27 @@ async def agent_research(payload: AgentIn) -> dict[str, Any]:
     try:
         plan = parse_json_block(raw_plan)
     except (ValueError, json.JSONDecodeError):
-        plan = {"queries": [query], "sources": ["arxiv", "openalex"], "days": payload.days}
+        plan = {"queries": [query], "sources": available, "days": payload.days}
     queries = [item for item in (plan.get("queries") or [query]) if isinstance(item, str)][:3]
-    selected = [source for source in (plan.get("sources") or []) if source in DISCOVER_SOURCES]
+    selected = [source for source in (plan.get("sources") or []) if source in available]
     if not selected:
-        selected = [source.strip() for source in payload.sources.split(",") if source.strip() in DISCOVER_SOURCES]
-    if not selected:
-        selected = ["arxiv", "openalex"]
-    days = int(plan.get("days") or payload.days or 365)
+        selected = available
+    if any(source in CHINESE_SOURCE_KEYS for source in selected) and CJK_RE.search(query):
+        if not any(CJK_RE.search(item) for item in queries):
+            queries = (queries + [query])[:3]
+    planned_days = plan.get("days")
+    if payload.days == 0:
+        planned_days = 0
+    elif planned_days is None:
+        planned_days = payload.days
+    try:
+        days = int(planned_days if planned_days is not None else 365)
+    except (TypeError, ValueError):
+        days = 365
     days = max(0, min(3650, days))
+    plan["queries"] = queries
+    plan["sources"] = selected
+    plan["days"] = days
 
     gathered: list[dict[str, Any]] = []
     errors = []
@@ -3613,8 +4141,7 @@ async def agent_research(payload: AgentIn) -> dict[str, Any]:
         gathered.extend(result["papers"])
         errors.extend(result["errors"])
     papers = _dedupe_papers(gathered)
-    papers.sort(key=lambda paper: (paper["citations"], paper["published"]), reverse=True)
-    papers = papers[:24]
+    papers = _mix_papers(papers, 24)
     if not papers:
         return {"plan": plan, "papers": [], "errors": errors, "markdown": "没有检索到结果，请换一个更具体的主题或扩大时间范围。"}
 
@@ -3664,32 +4191,76 @@ async def _download_pdf(client: httpx.AsyncClient, paper: dict[str, Any]) -> byt
                       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
         "Accept": "application/pdf,application/octet-stream,*/*",
     }
+
+    # Magtech journals: the public /CN/PDF/<doi> URL is often token-protected.
+    # Ask showArticleFile.do for a short-lived token URL first (the geog host
+    # serves this API for both journals), then fall back to the journal host.
+    article_id = str(paper.get("article_id") or "").strip()
+    if article_id:
+        for api in (paper.get("pdf_api") or "", paper.get("pdf_fallback_api") or ""):
+            api = api.strip()
+            if not api:
+                continue
+            try:
+                file_response = await client.post(
+                    api,
+                    data={"attachType": "PDF", "id": article_id, "json": "true"},
+                    headers=MAGTECH_HEADERS,
+                    timeout=20,
+                )
+            except httpx.HTTPError:
+                continue
+            match = re.search(r"\[json\]\s*(\{.*\})", file_response.text, re.S)
+            if not match:
+                continue
+            try:
+                file_payload = json.loads(match.group(1))
+            except json.JSONDecodeError:
+                continue
+            token_url = (file_payload.get("pdfUrl") or "").strip()
+            if file_payload.get("status") == 1 and token_url:
+                candidates.insert(0, token_url)
+                break
+
     seen = set()
     for candidate in candidates:
         if not candidate or candidate in seen:
             continue
         seen.add(candidate)
-        try:
-            response = await client.get(candidate, headers=headers)
-        except httpx.HTTPError:
-            continue
-        if response.status_code == 200 and response.content.startswith(b"%PDF"):
-            return response.content
+        for attempt in range(4):
+            try:
+                response = await client.get(candidate, headers=headers, timeout=45)
+            except httpx.HTTPError:
+                if attempt < 3:
+                    await asyncio.sleep(0.8 * (attempt + 1))
+                    continue
+                break
+            if response.status_code == 200 and response.content.startswith(b"%PDF"):
+                return response.content
+            break
     if doi:
         try:
             unpaywall = await client.get(
                 f"https://api.unpaywall.org/v2/{doi}",
                 params={"email": "local@example.com"},
+                timeout=20,
             )
             if unpaywall.status_code == 200:
                 best = unpaywall.json().get("best_oa_location") or {}
                 fallback = best.get("url_for_pdf") or best.get("url") or ""
                 if fallback and fallback not in seen:
-                    response = await client.get(fallback, headers=headers)
+                    response = await client.get(fallback, headers=headers, timeout=60)
                     if response.status_code == 200 and response.content.startswith(b"%PDF"):
                         return response.content
         except (httpx.HTTPError, ValueError):
             pass
+    if paper.get("source_key") in CHINESE_SOURCE_KEYS:
+        journal = paper.get("source") or paper.get("venue") or "中文期刊"
+        raise HTTPException(
+            400,
+            f"这篇《{journal}》PDF 暂时不能直接下载（当期可能需要在期刊官网登录）。"
+            "请点「原文」到官网查看。",
+        )
     raise HTTPException(400, "没有找到可下载的开放获取 PDF，请点「原文」查看。")
 
 
@@ -3700,13 +4271,36 @@ async def discover_import(payload: DiscoverImportIn) -> dict[str, Any]:
         data = await _download_pdf(client, paper)
     filename = re.sub(r"[^\w一-鿿 .-]", "", paper.get("title") or "paper")[:120] or "paper"
     result = _ingest_pdf_bytes(data, filename + ".pdf")
-    if paper.get("doi") or paper.get("abstract"):
+    if any(paper.get(key) for key in ("doi", "abstract", "title", "authors", "venue", "year")):
+        authors = paper.get("authors")
+        authors_text = (
+            ", ".join(str(author) for author in authors if author)
+            if isinstance(authors, list)
+            else str(authors or "")
+        )
         with db() as conn:
             conn.execute(
-                "UPDATE documents SET doi=COALESCE(NULLIF(doi,''), ?), "
-                "abstract=COALESCE(NULLIF(abstract,''), ?) WHERE id=?",
-                (paper.get("doi") or "", paper.get("abstract") or "", result["id"]),
+                "UPDATE documents SET "
+                "doi=COALESCE(NULLIF(doi,''), :doi), "
+                "abstract=COALESCE(NULLIF(abstract,''), :abstract), "
+                "title=CASE WHEN :title<>'' AND length(:title)>COALESCE(length(title),0) "
+                "THEN :title ELSE title END, "
+                "authors=CASE WHEN :authors<>'' THEN :authors ELSE authors END, "
+                "year=CASE WHEN :year<>'' THEN :year ELSE year END, "
+                "venue=CASE WHEN :venue<>'' THEN :venue ELSE venue END "
+                "WHERE id=:id",
+                {
+                    "doi": paper.get("doi") or "",
+                    "abstract": paper.get("abstract") or "",
+                    "title": (paper.get("title") or "").strip(),
+                    "authors": authors_text,
+                    "year": paper.get("year") or "",
+                    "venue": paper.get("venue") or "",
+                    "id": result["id"],
+                },
             )
+        if paper.get("title") and len(paper["title"]) > len(result.get("title") or ""):
+            result["title"] = paper["title"]
     return result
 
 
@@ -4666,7 +5260,7 @@ async def _merge_sync_snapshot(snapshot: dict[str, Any], client: httpx.AsyncClie
                 "INSERT INTO topics(name, query, sources, days, created_at, last_checked, last_count) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
-                    item["name"], item["query"], item.get("sources") or "arxiv,openalex",
+                    item["name"], item["query"], item.get("sources") or ",".join(DEFAULT_DISCOVER_SOURCES),
                     item.get("days") or 30, item.get("created_at") or now_iso(),
                     item.get("last_checked"), item.get("last_count") or 0,
                 ),
@@ -5222,7 +5816,7 @@ async def sync_now() -> dict[str, Any]:
 class TopicIn(BaseModel):
     name: str
     query: str
-    sources: str = "arxiv,openalex"
+    sources: str = "arxiv,openalex,dlxb,zrzyxb,wrr"
     days: int = 30
 
 
@@ -5240,7 +5834,7 @@ def _topic_key(paper: dict[str, Any]) -> str:
     doi = (paper.get("doi") or "").lower().strip()
     if doi:
         return doi
-    return re.sub(r"[^a-z0-9]+", "", (paper.get("title") or "").lower())[:120]
+    return re.sub(r"[^a-z0-9一-鿿]+", "", (paper.get("title") or "").lower())[:120]
 
 
 async def _refresh_topic_async(topic_id: int) -> dict[str, Any]:
@@ -5249,7 +5843,7 @@ async def _refresh_topic_async(topic_id: int) -> dict[str, Any]:
     if not topic:
         raise HTTPException(404, "主题不存在。")
     sources = [source for source in (topic["sources"] or "").split(",") if source in DISCOVER_SOURCES]
-    result = await _run_discovery(topic["query"], sources or ["arxiv", "openalex"], topic["days"], 12)
+    result = await _run_discovery(topic["query"], sources or DEFAULT_DISCOVER_SOURCES, topic["days"], 12)
     current_year = datetime.now(timezone.utc).year
     papers = [
         paper for paper in result["papers"]
@@ -5341,7 +5935,7 @@ def create_topic(payload: TopicIn) -> dict[str, Any]:
     with db() as conn:
         cursor = conn.execute(
             "INSERT INTO topics(name, query, sources, days, created_at) VALUES (?, ?, ?, ?, ?)",
-            (name, query, ",".join(sources) or "arxiv,openalex", max(0, min(3650, payload.days)), now_iso()),
+            (name, query, ",".join(sources) or ",".join(DEFAULT_DISCOVER_SOURCES), max(0, min(3650, payload.days)), now_iso()),
         )
         topic_id = int(cursor.lastrowid)
     return {"id": topic_id}
@@ -5379,7 +5973,7 @@ def topic_items(topic_id: int, limit: int = 30) -> dict[str, Any]:
             raise HTTPException(404, "主题不存在。")
         rows = conn.execute(
             "SELECT payload, seen, created_at FROM topic_items WHERE topic_id=? "
-            "ORDER BY id DESC LIMIT ?",
+            "ORDER BY id ASC LIMIT ?",
             (topic_id, max(1, min(100, limit))),
         ).fetchall()
     papers = []

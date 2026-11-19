@@ -24,7 +24,7 @@ from server import app
 HOST = "127.0.0.1"
 PREFERRED_PORT = 8788
 TITLE = "Folio"
-APP_VERSION = "0.9.1"
+APP_VERSION = "0.11.0"
 MUTEX_NAME = "Local\\Folio.SingleInstance"
 
 FROZEN = bool(getattr(sys, "frozen", False))

@@ -162,6 +162,28 @@ function toast(message, type = "", duration = 2800) {
 const loadingHtml = (text) => `<div class="loading"><span class="spinner"></span><span>${escapeHtml(text)}</span></div>`;
 const errorHtml = (message) => `<div class="error-box">${escapeHtml(message)}${/Key|配置|接口|模型/i.test(message) ? '<br><button class="ghost" data-action="open-settings">打开设置</button>' : ""}</div>`;
 
+const DISCOVER_DEFAULT_SOURCES = ["arxiv", "openalex", "dlxb", "zrzyxb", "wrr"];
+const DISCOVER_FALLBACK_META = [
+  { key: "arxiv", label: "arXiv", group: "国际综合" },
+  { key: "openalex", label: "OpenAlex", group: "国际综合" },
+  { key: "crossref", label: "Crossref", group: "国际综合" },
+  { key: "semantic", label: "Semantic Scholar", group: "国际综合" },
+  { key: "pubmed", label: "PubMed", group: "国际综合" },
+  { key: "wrr", label: "Water Resources Research (WRR)", group: "国际地学" },
+  { key: "dlxb", label: "地理学报", group: "中文地学期刊" },
+  { key: "zrzyxb", label: "自然资源学报", group: "中文地学期刊" },
+];
+function loadDiscoverSources() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("folio-discover-sources") || "null");
+    if (Array.isArray(saved) && saved.length) return saved;
+  } catch { /* localStorage can be unavailable */ }
+  return [...DISCOVER_DEFAULT_SOURCES];
+}
+function saveDiscoverSources() {
+  try { localStorage.setItem("folio-discover-sources", JSON.stringify(S.discover.sources)); } catch { /* ignore */ }
+}
+
 /* ------------------------------------------------------------------ state */
 const S = {
   view: "home",
@@ -231,11 +253,14 @@ const S = {
   syncConflicts: [],
   discover: {
     query: "",
-    sources: ["arxiv", "openalex"],
-    days: 365,
+    sources: loadDiscoverSources(),
+    sourceMeta: [],
+    journalsExpanded: false,
+    days: 0,
     sort: "recent",
     papers: [],
     errors: [],
+    resultSources: [],
     agent: null,
     loading: false,
     mode: "search",
@@ -466,7 +491,7 @@ async function renderHome() {
             <div class="card-head"><h3>${S.topics.length ? "关注主题" : "快速开始"}</h3><span class="eyebrow">${S.topics.length ? "每日新论文" : "四件事"}</span></div>
             <div class="card-body" ${S.topics.length ? 'id="homeTopics"' : ""}>${S.topics.length ? homeTopicsHtml() : `
               <div class="quick-list">
-                <button class="quick-row" data-action="go-discover"><span>${icon("compass")}发现最新文献</span><em>arXiv · OpenAlex</em></button>
+                <button class="quick-row" data-action="go-discover"><span>${icon("compass")}发现最新文献</span><em>中英文期刊</em></button>
                 <button class="quick-row" data-action="web-import-modal"><span>${icon("download")}从网页导入文章</span><em>正文提取</em></button>
                 <button class="quick-row" data-action="go-cet"><span>${icon("pen")}四六级精读</span><em>词汇分析</em></button>
                 <button class="quick-row" data-action="go-vocab"><span>${icon("book")}整理生词本</span><em>FSRS 复习</em></button>
@@ -602,29 +627,78 @@ async function refreshLibrary() {
 }
 
 /* --------------------------------------------------------------- discover */
-const DISCOVER_SOURCE_LABELS = {
-  arxiv: "arXiv", openalex: "OpenAlex", crossref: "Crossref",
-  semantic: "Semantic Scholar", pubmed: "PubMed",
-};
+async function loadDiscoverSourceMeta() {
+  if (S.discover.sourceMeta.length) return S.discover.sourceMeta;
+  try {
+    const data = await api("/api/discover/sources");
+    const sources = Array.isArray(data.sources) ? data.sources : [];
+    if (sources.length) {
+      S.discover.sourceMeta = sources;
+      const valid = new Set(sources.map((item) => item.key));
+      const filtered = S.discover.sources.filter((key) => valid.has(key));
+      const defaults = (data.defaults || DISCOVER_DEFAULT_SOURCES).filter((key) => valid.has(key));
+      S.discover.sources = filtered.length ? filtered : defaults;
+      saveDiscoverSources();
+    }
+  } catch { /* fall back to the built-in list */ }
+  if (!S.discover.sourceMeta.length) S.discover.sourceMeta = [...DISCOVER_FALLBACK_META];
+  return S.discover.sourceMeta;
+}
+
+function sourceLabel(key) {
+  return S.discover.sourceMeta.find((item) => item.key === key)?.label || key;
+}
+
+function sourceSummary(keys, max = 6) {
+  const labels = (keys || []).map(sourceLabel);
+  return labels.length > max
+    ? `${labels.slice(0, max).join(" / ")} 等 ${labels.length} 个来源`
+    : labels.join(" / ");
+}
+
+function sourceGroups() {
+  const groups = [];
+  for (const item of S.discover.sourceMeta) {
+    let group = groups.find((entry) => entry.label === item.group);
+    if (!group) {
+      group = { label: item.group || "其他", keys: [] };
+      groups.push(group);
+    }
+    group.keys.push(item.key);
+  }
+  return groups;
+}
 
 async function renderDiscover() {
   topbar({ crumb: "发现", right: `<button class="icon" data-action="shortcuts" title="快捷键">?</button>` });
+  await loadDiscoverSourceMeta();
+  const groups = sourceGroups();
+  const sourceChip = (key) => `<button class="chip ${S.discover.sources.includes(key) ? "active" : ""}" data-source="${key}">${escapeHtml(sourceLabel(key))}</button>`;
   const view = $("#discoverView");
   view.innerHTML = `
     <div class="page">
       <div class="page-head">
-        <div><h1>发现</h1><p>跨来源搜索最新文献，或让 AI 研究员做一轮检索 + 综述。</p></div>
+        <div><h1>发现</h1><p>中英文文献一起搜：58 本中文地学期刊 + Water Resources Research，从官网实时抓取摘要；也可以让 AI 研究员做一轮检索 + 综述。</p></div>
       </div>
       <div id="topicBar" class="topic-bar"></div>
       <section class="card discover-console">
         <div class="discover-search">
-          <div class="search-box" style="max-width:none;flex:1">${icon("search")}<input id="discoverQuery" placeholder="例如：remote sensing foundation models / 城市热岛 / 四六级阅读" value="${escapeAttr(S.discover.query)}"></div>
+          <div class="search-box" style="max-width:none;flex:1">${icon("search")}<input id="discoverQuery" placeholder="例如：城市热岛 / 生态系统服务 / remote sensing foundation models" value="${escapeAttr(S.discover.query)}"></div>
           <button class="primary" data-action="discover-search">${icon("search")}搜索</button>
           <button class="ghost" data-action="agent-run">${icon("compass")}AI 研究员</button>
         </div>
         <div class="discover-options">
-          <div class="filter-row" id="discoverSources">
-            ${Object.entries(DISCOVER_SOURCE_LABELS).map(([key, label]) => `<button class="chip ${S.discover.sources.includes(key) ? "active" : ""}" data-source="${key}">${label}</button>`).join("")}
+          <div id="discoverSources" class="source-groups">
+            ${groups.map((group) => {
+              const collapsible = group.label === "中文地学期刊" && group.keys.length > 12;
+              const visible = collapsible && !S.discover.journalsExpanded ? group.keys.slice(0, 10) : group.keys;
+              const hidden = group.keys.length - visible.length;
+              return `<div class="filter-row">
+                <span class="source-group-label">${escapeHtml(group.label)}</span>
+                ${visible.map(sourceChip).join("")}
+                ${collapsible ? `<button class="chip more-chip" data-action="toggle-journals">${S.discover.journalsExpanded ? "收起" : `更多 ${hidden} 本`}</button>` : ""}
+              </div>`;
+            }).join("")}
           </div>
           <select id="discoverDays" class="sort-select">
             <option value="7" ${S.discover.days === 7 ? "selected" : ""}>最近 7 天</option>
@@ -635,13 +709,15 @@ async function renderDiscover() {
           </select>
           <select id="discoverSort" class="sort-select">
             <option value="recent" ${S.discover.sort === "recent" ? "selected" : ""}>按时间</option>
+            <option value="relevance" ${S.discover.sort === "relevance" ? "selected" : ""}>按相关度</option>
             <option value="citations" ${S.discover.sort === "citations" ? "selected" : ""}>按引用</option>
           </select>
         </div>
         <div class="quick-topics">
           <span class="faint">快速主题</span>
-          ${["遥感基础模型", "地理空间大模型", "多模态遥感", "城市热岛", "Transformer"].map((topic) => `<button class="chip" data-action="discover-topic" data-text="${topic}">${topic}</button>`).join("")}
+          ${["城市热岛", "生态系统服务", "土地利用变化", "黄河流域", "遥感基础模型"].map((topic) => `<button class="chip" data-action="discover-topic" data-text="${topic}">${topic}</button>`).join("")}
         </div>
+        <p class="discover-note">中文期刊结果来自期刊官网，摘要直接解析；不同期刊的当期 PDF 可能需要在官网登录后下载。</p>
       </section>
       <div id="discoverTrace"></div>
       <div id="discoverResults"></div>
@@ -649,13 +725,16 @@ async function renderDiscover() {
   $("#discoverQuery").addEventListener("keydown", (event) => {
     if (event.key === "Enter") runDiscoverSearch();
   });
-  $$("#discoverSources .chip").forEach((chip) => {
+  $$("#discoverSources .chip[data-source]").forEach((chip) => {
     chip.addEventListener("click", () => {
       const source = chip.dataset.source;
-      S.discover.sources = S.discover.sources.includes(source)
+      const next = S.discover.sources.includes(source)
         ? S.discover.sources.filter((item) => item !== source)
         : [...S.discover.sources, source];
+      if (!next.length) { toast("至少保留一个来源", "error"); return; }
+      S.discover.sources = next;
       chip.classList.toggle("active");
+      saveDiscoverSources();
     });
   });
   $("#discoverDays").addEventListener("change", (event) => { S.discover.days = Number(event.target.value); });
@@ -775,15 +854,16 @@ function maybeRefreshTopics() {
     .catch(() => {});
 }
 
-function openTopicModal() {
+async function openTopicModal() {
+  await loadDiscoverSourceMeta();
   openModal(`
     <div class="modal-head"><h2>关注主题</h2><button class="icon" data-close-modal>${icon("x")}</button></div>
-    <p class="modal-note">给主题起个名字，写英文检索式。每次打开首页会检查超过 20 小时未更新的主题。</p>
+    <p class="modal-note">给主题起个名字，写检索式（中文或英文均可）。每次打开首页会检查超过 20 小时未更新的主题。</p>
     <label>名称<input id="topicName" placeholder="例如：遥感基础模型"></label>
-    <label>英文检索式<input id="topicQuery" placeholder="remote sensing foundation model"></label>
+    <label>检索式<input id="topicQuery" placeholder="城市热岛 / remote sensing foundation model"></label>
     <label>时间范围<select id="topicDays"><option value="7">最近 7 天</option><option value="30" selected>最近 30 天</option><option value="90">最近 90 天</option><option value="365">最近一年</option></select></label>
-    <label>来源<div class="filter-row" id="topicSources">
-      ${Object.entries(DISCOVER_SOURCE_LABELS).map(([key, label]) => `<button class="chip ${["arxiv", "openalex"].includes(key) ? "active" : ""}" data-topic-source="${key}">${label}</button>`).join("")}
+    <label>来源<div class="topic-source-groups" id="topicSources">
+      ${sourceGroups().map((group) => `<div class="filter-row"><span class="source-group-label">${escapeHtml(group.label)}</span>${group.keys.map((key) => `<button class="chip ${DISCOVER_DEFAULT_SOURCES.includes(key) ? "active" : ""}" data-topic-source="${key}">${escapeHtml(sourceLabel(key))}</button>`).join("")}</div>`).join("")}
     </div></label>
     <div class="modal-actions"><button class="ghost" data-close-modal>取消</button><button class="primary" data-action="save-topic">关注</button></div>`);
   $$("#topicSources .chip").forEach((chip) => chip.addEventListener("click", () => chip.classList.toggle("active")));
@@ -817,6 +897,8 @@ async function viewTopic(topicId, silent = false) {
     S.discover.agent = null;
     S.discover.loading = false;
     S.discover.errors = [];
+    const topicSources = String(data.topic.sources || "").split(",").filter(Boolean);
+    if (topicSources.length) S.discover.resultSources = topicSources;
     S.discover.query = data.topic.name;
     const input = $("#discoverQuery");
     if (input) input.value = data.topic.name;
@@ -863,6 +945,7 @@ async function runDiscoverSearch() {
   S.discover.mode = "search";
   S.discover.agent = null;
   S.discover.papers = [];
+  S.discover.resultSources = [...S.discover.sources];
   renderDiscoverTrace();
   renderDiscoverResults();
   const params = new URLSearchParams({
@@ -895,6 +978,7 @@ async function runAgent() {
   S.discover.mode = "agent";
   S.discover.agent = null;
   S.discover.papers = [];
+  S.discover.resultSources = [...S.discover.sources];
   renderDiscoverTrace("<div class=\"agent-card card\">" + loadingHtml("AI 研究员正在规划检索式、抓取论文并写综述…") + "</div>");
   renderDiscoverResults();
   try {
@@ -910,6 +994,11 @@ async function runAgent() {
     });
     S.discover.agent = data;
     S.discover.papers = data.papers || [];
+    const metaKeys = new Set(S.discover.sourceMeta.map((item) => item.key));
+    const planSources = Array.isArray(data.plan?.sources)
+      ? data.plan.sources.filter((source) => metaKeys.has(source))
+      : [];
+    if (planSources.length) S.discover.resultSources = planSources;
     S.discover.errors = data.errors || [];
     S.discover.loading = false;
     renderDiscoverTrace();
@@ -929,7 +1018,7 @@ function renderDiscoverTrace(override = "") {
   if (S.discover.loading) {
     const label = S.discover.mode === "agent"
       ? "AI 研究员正在规划检索式、抓取论文并写综述…"
-      : `正在检索 ${S.discover.sources.map((source) => DISCOVER_SOURCE_LABELS[source]).join(" / ")}…`;
+      : `正在检索 ${sourceSummary(S.discover.sources, 4)}…`;
     box.innerHTML = `<div class="agent-card card">${loadingHtml(label)}</div>`;
     return;
   }
@@ -943,7 +1032,7 @@ function renderDiscoverTrace(override = "") {
         <div class="agent-plan">
           <span class="sum-label">检索计划</span>
           <div class="pill-list">${(plan.queries || []).map((item) => `<div class="pill">${escapeHtml(item)}</div>`).join("")}</div>
-          <div class="faint" style="font-size:11px;margin-top:6px">${escapeHtml(plan.focus || "")} · ${(plan.sources || []).join(" / ")} · ${plan.days || S.discover.days} 天</div>
+          <div class="faint" style="font-size:11px;margin-top:6px">${escapeHtml(plan.focus || "")} · ${sourceSummary(plan.sources || [], 4)} · ${plan.days ?? S.discover.days} 天</div>
         </div>
         <div class="md agent-md">${mdToHtml(agent.markdown || "")}</div>
       </div>
@@ -959,22 +1048,24 @@ function renderDiscoverResults() {
   }
   const errors = (S.discover.errors || []).map((error) => `<div class="discover-warning">${escapeHtml(error.source)} 暂时不可用${error.message ? `：${escapeHtml(error.message)}` : ""}</div>`).join("");
   if (!S.discover.papers.length) {
-    box.innerHTML = `${errors}<div class="empty-state" style="padding:50px 20px"><div class="mark">✦</div><h2>搜一下最近的研究</h2><p>选好来源和时间范围，输入主题；或者点「AI 研究员」让它自己规划。</p></div>`;
+    box.innerHTML = `${errors}<div class="empty-state" style="padding:50px 20px"><div class="mark">✦</div><h2>搜一下相关的研究</h2><p>选好来源和时间范围，输入主题；中文期刊的经典论文可以把时间改成「全部时间」。或者点「AI 研究员」让它自己规划。</p></div>`;
     return;
   }
+  const shownSources = S.discover.resultSources?.length ? S.discover.resultSources : S.discover.sources;
   box.innerHTML = `${errors}
-    <div class="results-head"><span>${S.discover.papers.length} 篇结果</span><span class="faint">来源：${S.discover.sources.map((source) => DISCOVER_SOURCE_LABELS[source]).join(" / ")}</span></div>
+    <div class="results-head"><span>${S.discover.papers.length} 篇结果</span><span class="faint">来源：${sourceSummary(shownSources, 6)}</span></div>
     <div class="paper-grid">${S.discover.papers.map((paper, index) => paperCard(paper, index)).join("")}</div>`;
 }
 
 function paperCard(paper, index) {
   const authors = (paper.authors || []).slice(0, 5).join(", ") + ((paper.authors || []).length > 5 ? " 等" : "");
   const importing = S.discover.importing === index;
+  const sourceClass = paper.source_key || String(paper.source || "").toLowerCase().replace(/\s+/g, "-");
   return `
     <article class="paper-card card">
       <div class="paper-top">
-        <span class="source-badge source-${paper.source.toLowerCase().replace(/\s+/g, "-")}">${escapeHtml(paper.source)}</span>
-        <span class="faint">${escapeHtml(paper.year || "")}${paper.venue ? ` · ${escapeHtml(paper.venue)}` : ""}</span>
+        <span class="source-badge source-${sourceClass}">${escapeHtml(paper.source)}</span>
+        <span class="faint">${escapeHtml(paper.year || "")}${paper.venue && paper.venue !== paper.source ? ` · ${escapeHtml(paper.venue)}` : ""}</span>
         <span class="spacer"></span>
         ${paper.citations ? `<span class="faint">${paper.citations} 引用</span>` : ""}
       </div>
@@ -982,7 +1073,7 @@ function paperCard(paper, index) {
       <div class="paper-authors">${escapeHtml(authors)}</div>
       <p class="paper-abstract">${escapeHtml(paper.abstract || "（没有摘要）")}</p>
       <div class="paper-actions">
-        ${paper.pdf_url ? `<button class="primary small" data-action="import-paper" data-index="${index}" ${importing ? "disabled" : ""}>${icon("download")}${importing ? "导入中…" : "导入 PDF"}</button>` : '<span class="chip">无开放 PDF</span>'}
+        ${paper.pdf_url || paper.pdf_api ? `<button class="primary small" data-action="import-paper" data-index="${index}" ${importing ? "disabled" : ""}>${icon("download")}${importing ? "导入中…" : "导入 PDF"}</button>` : '<span class="chip">无开放 PDF</span>'}
         ${paper.url ? `<a class="ghost small" href="${escapeAttr(paper.url)}" target="_blank" rel="noopener">${icon("arrow")}原文</a>` : ""}
         <button class="ghost small" data-action="cite-paper" data-index="${index}">${icon("copy")}引用</button>
       </div>
@@ -3553,6 +3644,7 @@ async function handleAction(action, element, event) {
     case "doc-export-menu": openDocExportMenu(); break;
     case "vocab-export-menu": openVocabExportMenu(); break;
     case "discover-search": await runDiscoverSearch(); break;
+    case "toggle-journals": S.discover.journalsExpanded = !S.discover.journalsExpanded; await renderDiscover(); break;
     case "agent-run": await runAgent(); break;
     case "discover-topic": {
       const input = $("#discoverQuery");

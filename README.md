@@ -1,17 +1,17 @@
 # Folio
 
-**本地优先的英文阅读、四六级学习与科研工作台。**  
-**A local-first Windows workbench for English reading, CET-4/6 study and research.**
+**本地优先的中英文阅读、四六级学习与科研工作台。**  
+**A local-first Windows workbench for reading, CET-4/6 study and research.**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-2f4a3c)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-6f685d)](https://github.com/bw448/folio/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-8a5a1f)](requirements.txt)
 [![No telemetry](https://img.shields.io/badge/telemetry-none-3d6b4f)](#数据与隐私)
 
-Folio 是一个本地优先的桌面阅读与研究工作台：读英文论文、备考四六级、整理科研资料。  
-它把 PDF/EPUB 阅读、离线词典、AI 讲解、间隔重复、题目解析、手动错题本、文献发现和 WebDAV 同步放在一个软件里。所有数据保存在第一次启动时选择的资料库文件夹中，不上传遥测。
+Folio 是一个本地优先的桌面阅读与研究工作台：读中英文论文、备考四六级、整理科研资料。  
+它把 PDF/EPUB 阅读、离线词典、AI 讲解、间隔重复、题目解析、手动错题本、中英文文献发现和 WebDAV 同步放在一个软件里。所有数据保存在第一次启动时选择的资料库文件夹中，不上传遥测。
 
-Folio is a local-first desktop workbench for reading English papers, preparing for CET-4/6, and organizing research. It combines a PDF/EPUB reader, offline dictionary, AI explanations, spaced repetition, question analysis, a manual wrong-answer notebook, literature discovery and optional WebDAV sync. Your data stays in a library folder you choose on first launch; there is no telemetry.
+Folio is a local-first desktop workbench for reading Chinese and English papers, preparing for CET-4/6, and organizing research. It combines a PDF/EPUB reader, offline dictionary, AI explanations, spaced repetition, question analysis, a manual wrong-answer notebook, literature discovery and optional WebDAV sync. Your data stays in a library folder you choose on first launch; there is no telemetry.
 
 ---
 
@@ -25,11 +25,15 @@ Folio is a local-first desktop workbench for reading English papers, preparing f
 | --- | --- |
 | <img src="docs/library.png" width="100%" alt="Folio library"> | <img src="docs/mistakes.png" width="100%" alt="Folio wrong-answer notebook"> |
 
+| 发现：58 本中文地学期刊 + WRR / Discover |
+| --- |
+| <img src="docs/discover.png" width="100%" alt="Folio discover with Chinese geoscience journals"> |
+
 ---
 
 ## 适合谁 / Who it is for
 
-- 需要读英文论文、英文教材、英文报道的人
+- 需要读英文论文、英文教材、英文报道，也要查中文地学期刊论文的人
 - 备考四六级，想做真题精读、词汇积累、题目解析和错题复盘的人
 - 想在一个软件里完成「读文献 → 查词 → 做笔记 → 复习 → 整理科研材料」的人
 - 希望数据留在本机、不想把笔记和 PDF 上传到云端的人
@@ -70,7 +74,7 @@ Folio is a local-first desktop workbench for reading English papers, preparing f
 - **结构化摘要**：TL;DR、研究问题、方法、数据、结果、贡献、局限、关键术语
 - **研究工具**：速读卡、方法拆解、审稿人视角、相关工作段落、研究空白、精读笔记
 - **多篇文献对比**：2–6 篇论文的研究问题/方法/数据/结果/创新/局限对比表
-- **文献发现**：arXiv、OpenAlex、Crossref、Semantic Scholar、PubMed；Unpaywall 补开放 PDF
+- **文献发现**：arXiv、OpenAlex、Crossref、Semantic Scholar、PubMed、**Water Resources Research (WRR)**，以及**地理学报、自然资源学报、地理研究、资源科学等 58 本中文地学期刊**（期刊官网实时检索中文摘要；当期 PDF 可能需在官网登录）；Unpaywall 补开放 PDF
 - **AI 研究员**：规划检索式 → 跨库抓取 → 去重排序 → 中文研究简报
 - **关注主题**：每日检查新论文，侧栏通知
 - **Zotero 导入**：本地 API、CSL JSON、BibTeX
@@ -91,7 +95,7 @@ Folio is a local-first desktop workbench for reading English papers, preparing f
 到 [Releases](https://github.com/bw448/folio/releases/latest) 下载：
 
 ```
-Folio-0.9.1-win64.zip   (约 223 MB)
+Folio-0.11.0-win64.zip   (约 223 MB)
 ```
 
 1. 解压得到 `Folio/` 文件夹
@@ -166,7 +170,7 @@ dist\Folio\_internal\
 
 用的是 PyInstaller **onedir**，不是 onefile。原因：这个项目依赖 PyMuPDF、RapidOCR/ONNX、ECDICT，onedir 启动快、杀毒误报少、更新和排查都更简单。
 
-Release 把整个 `dist\Folio\` 压成 `Folio-0.9.1-win64.zip` 上传即可。
+Release 把整个 `dist\Folio\` 压成 `Folio-0.11.0-win64.zip` 上传即可。
 
 ---
 
